@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Layer, Group, Circle, Text } from "react-konva";
+import { Layer, Circle, Text } from "react-konva";
 import { useRemoteCursors } from "./useRemoteCursors";
 
 interface RemoteCursorsProps {
@@ -22,17 +22,17 @@ export function RemoteCursors({
   scaleY = 1,
 }: RemoteCursorsProps) {
   const cursors = useRemoteCursors(boardId, excludeUserId);
-  const invX = scaleX > 0 ? 1 / scaleX : 1;
-  const invY = scaleY > 0 ? 1 / scaleY : 1;
 
   return (
-    <Layer listening={false} x={x} y={y} scaleX={scaleX} scaleY={scaleY}>
-      <Group scaleX={invX} scaleY={invY}>
-        {cursors.map((cursor) => (
+    <Layer listening={false}>
+      {cursors.map((cursor) => {
+        const screenX = x + cursor.x * scaleX;
+        const screenY = y + cursor.y * scaleY;
+        return (
           <React.Fragment key={cursor.userId}>
             <Circle
-              x={cursor.x}
-              y={cursor.y}
+              x={screenX}
+              y={screenY}
               radius={6}
               fill={cursor.color ?? "#3b82f6"}
               stroke="#fff"
@@ -42,16 +42,16 @@ export function RemoteCursors({
               shadowOffsetY={1}
             />
             <Text
-              x={cursor.x + 10}
-              y={cursor.y - 8}
+              x={screenX + 10}
+              y={screenY - 8}
               text={cursor.displayName ?? cursor.userId.slice(0, 8)}
               fontSize={12}
               fill={cursor.color ?? "#3b82f6"}
               fontFamily="sans-serif"
             />
           </React.Fragment>
-        ))}
-      </Group>
+        );
+      })}
     </Layer>
   );
 }
