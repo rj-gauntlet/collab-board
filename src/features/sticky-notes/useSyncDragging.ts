@@ -78,6 +78,8 @@ export function useSyncDragging(
   useEffect(() => {
     const rtdb = getFirebaseDatabase();
     const draggingRef = ref(rtdb, `dragging/${boardId}/${userId}`);
-    return () => remove(draggingRef);
+    return () => {
+      remove(draggingRef);
+    };
   }, [boardId, userId]);
 }
