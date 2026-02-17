@@ -16,6 +16,7 @@ interface StickyNoteProps {
   onDragStart: () => void;
   onDragMove?: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
+  onContextMenu?: (evt: MouseEvent) => void;
 }
 
 export function StickyNote({
@@ -26,6 +27,7 @@ export function StickyNote({
   onDragStart,
   onDragMove,
   onDragEnd,
+  onContextMenu,
 }: StickyNoteProps) {
   const groupRef = useRef<Konva.Group>(null);
   const textRef = useRef<Konva.Text>(null);
@@ -52,6 +54,14 @@ export function StickyNote({
     [onDragEnd]
   );
 
+  const handleContextMenu = useCallback(
+    (e: Konva.KonvaEventObject<PointerEvent>) => {
+      e.evt.preventDefault();
+      onContextMenu?.(e.evt);
+    },
+    [onContextMenu]
+  );
+
   return (
     <>
       <Group
@@ -66,6 +76,7 @@ export function StickyNote({
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
         onDblClick={handleDblClick}
+        onContextMenu={handleContextMenu}
         dragBoundFunc={(pos) => ({
           x: Math.max(0, pos.x),
           y: Math.max(0, pos.y),

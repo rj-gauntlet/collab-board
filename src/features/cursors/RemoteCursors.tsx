@@ -7,31 +7,29 @@ import { useRemoteCursors } from "./useRemoteCursors";
 interface RemoteCursorsProps {
   boardId: string;
   excludeUserId?: string;
-  stageScale?: number;
-  stageX?: number;
-  stageY?: number;
+  x?: number;
+  y?: number;
+  scaleX?: number;
+  scaleY?: number;
 }
 
 export function RemoteCursors({
   boardId,
   excludeUserId,
-  stageScale = 1,
-  stageX = 0,
-  stageY = 0,
+  x = 0,
+  y = 0,
+  scaleX = 1,
+  scaleY = 1,
 }: RemoteCursorsProps) {
   const cursors = useRemoteCursors(boardId, excludeUserId);
 
   return (
-    <Layer listening={false}>
-      {cursors.map((cursor) => {
-        const screenX = cursor.x * stageScale + stageX;
-        const screenY = cursor.y * stageScale + stageY;
-
-        return (
+    <Layer listening={false} x={x} y={y} scaleX={scaleX} scaleY={scaleY}>
+      {cursors.map((cursor) => (
           <React.Fragment key={cursor.userId}>
             <Circle
-              x={screenX}
-              y={screenY}
+              x={cursor.x}
+              y={cursor.y}
               radius={6}
               fill={cursor.color ?? "#3b82f6"}
               stroke="#fff"
@@ -41,16 +39,15 @@ export function RemoteCursors({
               shadowOffsetY={1}
             />
             <Text
-              x={screenX + 10}
-              y={screenY - 8}
+              x={cursor.x + 10}
+              y={cursor.y - 8}
               text={cursor.displayName ?? cursor.userId.slice(0, 8)}
               fontSize={12}
               fill={cursor.color ?? "#3b82f6"}
               fontFamily="sans-serif"
             />
           </React.Fragment>
-        );
-      })}
+        ))}
     </Layer>
   );
 }

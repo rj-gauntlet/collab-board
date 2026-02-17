@@ -9,7 +9,14 @@ const DEFAULT_STROKE_COLOR = "#000000";
 
 export type OnLineComplete = (line: LineElement) => void;
 
-export function useLocalDrawing(userId: string, onLineComplete?: OnLineComplete) {
+/** Converts screen coords (x, y) to board coords. If not provided, coords are used as-is. */
+export type ScreenToBoard = (screenX: number, screenY: number) => { x: number; y: number };
+
+export function useLocalDrawing(
+  userId: string,
+  onLineComplete?: OnLineComplete,
+  screenToBoard?: ScreenToBoard
+) {
   const [currentStroke, setCurrentStroke] = useState<number[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const isDrawingRef = useRef(false);
@@ -38,12 +45,13 @@ export function useLocalDrawing(userId: string, onLineComplete?: OnLineComplete)
       const stage = evt.target.getStage();
       const pos = stage?.getPointerPosition();
       if (pos) {
-        const pts = [pos.x, pos.y];
+        const { x, y } = screenToBoard ? screenToBoard(pos.x, pos.y) : pos;
+        const pts = [x, y];
         pointsRef.current = pts;
         setCurrentStroke(pts);
       }
     },
-    []
+    [screenToBoard]
   );
 
   const handleMouseMove = useCallback(
@@ -52,11 +60,12 @@ export function useLocalDrawing(userId: string, onLineComplete?: OnLineComplete)
       const stage = evt.target.getStage();
       const pos = stage?.getPointerPosition();
       if (pos) {
-        pointsRef.current.push(pos.x, pos.y);
+        const { x, y } = screenToBoard ? screenToBoard(pos.x, pos.y) : pos;
+        pointsRef.current.push(x, y);
         scheduleFlush();
       }
     },
-    [scheduleFlush]
+    [scheduleFlush, screenToBoard]
   );
 
   const handleMouseUp = useCallback(() => {

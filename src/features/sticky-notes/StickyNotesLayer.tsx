@@ -17,9 +17,14 @@ interface StickyNotesLayerProps {
   editingNoteId: string | null;
   onEditingNoteIdChange: (id: string | null) => void;
   onNoteUpdate: (note: StickyNoteElement) => void;
+  onNoteContextMenu?: (note: StickyNoteElement, evt: MouseEvent) => void;
   onDragStart: (elementId: string) => void;
   onDragMove: (elementId: string, x: number, y: number) => void;
   onDragEnd: () => void;
+  x?: number;
+  y?: number;
+  scaleX?: number;
+  scaleY?: number;
 }
 
 export function StickyNotesLayer({
@@ -29,9 +34,14 @@ export function StickyNotesLayer({
   editingNoteId,
   onEditingNoteIdChange,
   onNoteUpdate,
+  onNoteContextMenu,
   onDragStart,
   onDragMove,
   onDragEnd,
+  x = 0,
+  y = 0,
+  scaleX = 1,
+  scaleY = 1,
 }: StickyNotesLayerProps) {
   const remoteDragging = useRemoteDragging(boardId, userId);
 
@@ -79,7 +89,7 @@ export function StickyNotesLayer({
   );
 
   return (
-    <Layer listening={true}>
+    <Layer listening={true} x={x} y={y} scaleX={scaleX} scaleY={scaleY}>
       {notes.map((note) => {
         const remoteDrag = remoteDraggingByElementId.get(note.id);
         const displayX = remoteDrag ? remoteDrag.x : note.x;
@@ -127,6 +137,7 @@ export function StickyNotesLayer({
             isEditing={editingNoteId === note.id}
             onEditStart={() => onEditingNoteIdChange(note.id)}
             onEditEnd={(text) => handleEditEnd(note, text)}
+            onContextMenu={(evt) => onNoteContextMenu?.(note, evt)}
             onDragStart={() => onDragStart(note.id)}
             onDragMove={(x, y) => onDragMove(note.id, x, y)}
             onDragEnd={(x, y) => handleDragEnd(note, x, y)}
