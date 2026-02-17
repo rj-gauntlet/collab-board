@@ -3,8 +3,7 @@ import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getAuth } from "firebase/auth";
 
-// These values are pulled from your .env.local file
-const firebaseConfig = {
+const env = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
@@ -14,15 +13,26 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase only if it hasn't been initialized already (standard Next.js pattern)
+const hasValidConfig = !!(env.projectId && env.databaseURL);
+
+const firebaseConfig = hasValidConfig
+  ? env
+  : {
+      apiKey: env.apiKey ?? "build-placeholder",
+      authDomain: env.authDomain ?? "build-placeholder",
+      databaseURL: "https://build-placeholder.firebaseio.com",
+      projectId: env.projectId ?? "build-placeholder",
+      storageBucket: env.storageBucket ?? "build-placeholder",
+      messagingSenderId: env.messagingSenderId ?? "0",
+      appId: env.appId ?? "build-placeholder",
+    };
+
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Export the specific services for use in your components
-export const db = getFirestore(app);      // Persistent board data
-export const rtdb = getDatabase(app);    // Low-latency cursor sync
+export const db = getFirestore(app);
+export const rtdb = getDatabase(app);
 
-/** Alias for RTDB - used by cursor/whiteboard slices */
 export const getFirebaseDatabase = () => rtdb;
-export const auth = getAuth(app);        // User identity management
+export const auth = getAuth(app);
 
 export default app;
