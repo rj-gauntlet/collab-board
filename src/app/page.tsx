@@ -20,17 +20,28 @@ export default function Home() {
   const [perfMonitorVisible, setPerfMonitorVisible] = useState(false);
   const canvasRef = useRef<WhiteboardCanvasHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 500 });
+  const [canvasSize, setCanvasSize] = useState(() =>
+    typeof window !== "undefined"
+      ? { width: window.innerWidth, height: window.innerHeight }
+      : { width: 800, height: 500 }
+  );
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const observer = new ResizeObserver((entries) => {
-      const { width, height } = entries[0]?.contentRect ?? { width: 800, height: 500 };
-      setCanvasSize({ width: Math.floor(width), height: Math.floor(height) });
-    });
+    const updateSize = () => {
+      const width = el.clientWidth || window.innerWidth;
+      const height = el.clientHeight || window.innerHeight;
+      setCanvasSize((prev) => {
+        const w = Math.floor(width);
+        const h = Math.floor(height);
+        return prev.width === w && prev.height === h ? prev : { width: w, height: h };
+      });
+    };
 
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
@@ -174,7 +185,11 @@ export default function Home() {
         </div>
       </header>
 
-      <div ref={containerRef} className="min-h-0 flex-1">
+      <div
+        ref={containerRef}
+        className="min-h-0 flex-1 w-full"
+        style={{ minHeight: 0 }}
+      >
         <WhiteboardErrorBoundary>
           <WhiteboardCanvas
             ref={canvasRef}

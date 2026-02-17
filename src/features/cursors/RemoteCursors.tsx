@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Layer, Circle, Text } from "react-konva";
+import { Layer, Group, Circle, Text } from "react-konva";
 import { useRemoteCursors } from "./useRemoteCursors";
 
 interface RemoteCursorsProps {
@@ -22,10 +22,13 @@ export function RemoteCursors({
   scaleY = 1,
 }: RemoteCursorsProps) {
   const cursors = useRemoteCursors(boardId, excludeUserId);
+  const invX = scaleX > 0 ? 1 / scaleX : 1;
+  const invY = scaleY > 0 ? 1 / scaleY : 1;
 
   return (
     <Layer listening={false} x={x} y={y} scaleX={scaleX} scaleY={scaleY}>
-      {cursors.map((cursor) => (
+      <Group scaleX={invX} scaleY={invY}>
+        {cursors.map((cursor) => (
           <React.Fragment key={cursor.userId}>
             <Circle
               x={cursor.x}
@@ -48,6 +51,7 @@ export function RemoteCursors({
             />
           </React.Fragment>
         ))}
+      </Group>
     </Layer>
   );
 }
