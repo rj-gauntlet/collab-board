@@ -102,7 +102,7 @@ export function StickyNote({
           text={note.text || "Double-click to edit"}
           fontSize={FONT_SIZE}
           fontFamily="sans-serif"
-          fill="#1f2937"
+          fill={note.text ? "#1f2937" : "#9ca3af"}
           padding={4}
           wrap="word"
           ellipsis
