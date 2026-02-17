@@ -6,6 +6,8 @@ import { ref, onValue } from "firebase/database";
 import { db, getFirebaseDatabase } from "@/lib/firebase";
 
 const ONLINE_THRESHOLD_MS = 10_000;
+/** Remove users from the list after this long offline */
+const OFFLINE_REMOVAL_MS = 60_000;
 
 export interface BoardUser {
   userId: string;
@@ -54,16 +56,19 @@ export function useBoardUsers(boardId: string): BoardUser[] {
     const presenceRef = ref(rtdb, `presence/${boardId}`);
     const unsubscribe = onValue(presenceRef, (snapshot) => {
       const data = snapshot.val();
-      const map = new Map<string, number>();
-      if (data && typeof data === "object") {
-        for (const [userId, value] of Object.entries(data)) {
-          const pos = value as { updatedAt?: number };
-          if (pos && typeof pos.updatedAt === "number") {
-            map.set(userId, pos.updatedAt);
+      setPresenceUpdatedAt((prev) => {
+        const next = new Map(prev);
+        if (data && typeof data === "object") {
+          for (const [userId, value] of Object.entries(data)) {
+            const pos = value as { updatedAt?: number };
+            if (pos && typeof pos.updatedAt === "number") {
+              const existing = next.get(userId) ?? 0;
+              next.set(userId, Math.max(existing, pos.updatedAt));
+            }
           }
         }
-      }
-      setPresenceUpdatedAt(map);
+        return next;
+      });
     });
 
     return () => unsubscribe();
@@ -76,7 +81,10 @@ export function useBoardUsers(boardId: string): BoardUser[] {
 
     for (const [userId, meta] of usersFromFirestore) {
       const updatedAt = presenceUpdatedAt.get(userId) ?? 0;
-      const online = now - updatedAt < ONLINE_THRESHOLD_MS;
+      const offlineDuration = now - updatedAt;
+      if (offlineDuration > OFFLINE_REMOVAL_MS) continue;
+
+      const online = offlineDuration < ONLINE_THRESHOLD_MS;
 
       result.push({
         userId,
