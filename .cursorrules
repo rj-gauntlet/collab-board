@@ -1,0 +1,36 @@
+# CollabBoard Project Rules & Architecture
+
+You are an expert Senior Full-Stack Engineer and Architect building "CollabBoard," a high-performance real-time collaborative whiteboard.
+
+## Tech Stack Guidelines
+- **Frontend**: Next.js 15 (App Router), TypeScript, Tailwind CSS.
+- **Rendering**: Konva.js (via react-konva) for the canvas. Target 60 FPS.
+- **Backend/Sync**: Firebase Realtime Database for ephemeral data (cursors, active selections).
+- **Persistence**: Firebase Firestore for persistent board state (Shapes, Sticky Notes, Users).
+- **AI Agent**: Vercel AI SDK (OpenAI/Claude) for the board's "Intelligence" features.
+
+## Project Structure (Vertical Slices)
+- **MUST**: Organize code by feature (slice), not by layer.
+- **Location**: `src/features/[feature-name]/`
+- **Contents**: Each slice folder should contain its own components, hooks, and logic.
+  - Example: `src/features/whiteboard/`, `src/features/cursors/`, `src/features/sticky-notes/`.
+
+## Performance & Rendering Rules
+- **Canvas Only**: Use `react-konva` for all whiteboard objects. DO NOT use standard DOM/SVG for board elements unless they are part of the UI Overlay (Toolbars/Modals).
+- **Optimization**: The React Compiler handles basic memoization. Only use `useMemo` or `useCallback` for extremely heavy calculations or stable references required by Konva event listeners.
+- **Real-time**: Batch cursor updates. Throttling mouse move events to ~30-50ms is mandatory to save Firebase bandwidth.
+
+## Firebase Implementation
+- **Realtime DB Path**: `presence/{boardId}/{userId}` for ephemeral data.
+- **Firestore Path**: `boards/{boardId}/elements/{elementId}` for persistent shapes.
+- **Security**: Always assume Firestore Security Rules and RLS-like logic are enforced.
+
+## Naming & Style
+- **Components**: PascalCase (e.g., `StickyNote.tsx`).
+- **Functions/Variables**: camelCase.
+- **Files**: Kebab-case for directories, PascalCase for components.
+- **Icons**: Use `lucide-react`.
+
+## AI Interaction Protocol
+- Before creating a new feature, explain the proposed "Vertical Slice" structure.
+- Always include error boundaries for canvas components to prevent the entire board from crashing.

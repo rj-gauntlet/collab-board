@@ -1,0 +1,15 @@
+kind: "AppStack"
+schemaVersion: "v1"
+
+runConfig:
+  # Next.js 15 requires at least Node 18 or 20
+  runtime: "nodejs20"
+  # Standard machine for MVP; upgrade if AI processing hits memory limits
+  cpu: 1
+  memoryMiB: 512
+
+# This ensures your AI Secret Key is available to the Server Action
+env:
+  - variable: OPENAI_API_KEY
+    # Reference a secret stored in Google Cloud Secret Manager for security
+    secret: OPENAI_API_KEY
