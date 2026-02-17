@@ -8,8 +8,42 @@ runConfig:
   cpu: 1
   memoryMiB: 512
 
-# This ensures your AI Secret Key is available to the Server Action
+# Firebase client config (needed at BUILD so Next.js can inline NEXT_PUBLIC_* for the browser)
 env:
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyAlO9OKxtOv2hnCOV2753XlbTSo-VNKyC4"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "collab-board-rj.firebaseapp.com"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_DATABASE_URL
+    value: "https://collab-board-rj-default-rtdb.firebaseio.com"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "collab-board-rj"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "collab-board-rj.firebasestorage.app"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "810747159790"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:810747159790:web:ecffd72096984ac083bfff"
+    availability:
+      - BUILD
+      - RUNTIME
   - variable: OPENAI_API_KEY
-    # Reference a secret stored in Google Cloud Secret Manager for security
     secret: OPENAI_API_KEY
