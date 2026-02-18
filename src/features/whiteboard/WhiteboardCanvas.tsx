@@ -18,6 +18,7 @@ import {
   StickyNotesLayer,
   usePersistedNotes,
   persistNote,
+  deleteNote,
   createDefaultNote,
 } from "@/features/sticky-notes";
 import { useRemoteNotes } from "@/features/sticky-notes/useRemoteNotes";
@@ -26,6 +27,7 @@ import {
   ShapesLayer,
   usePersistedShapes,
   persistShape,
+  deleteShape,
   createDefaultShape,
 } from "@/features/shapes";
 import { useRemoteShapes } from "@/features/shapes/useRemoteShapes";
@@ -205,6 +207,36 @@ export const WhiteboardCanvas = forwardRef<
     },
     []
   );
+
+  const handleDelete = useCallback(() => {
+    if (!contextMenu) return;
+    if (contextMenu.type === "note") {
+      deleteNote(boardId, contextMenu.note.id).catch((err) =>
+        console.error("Failed to delete note:", err)
+      );
+      setOptimisticNotes((prev) => prev.filter((n) => n.id !== contextMenu.note.id));
+      setLocalNoteOverrides((prev) => {
+        const next = new Map(prev);
+        next.delete(contextMenu.note.id);
+        return next;
+      });
+      setEditingNoteId((id) => (id === contextMenu.note.id ? null : id));
+    } else {
+      deleteShape(boardId, contextMenu.shape.id).catch((err) =>
+        console.error("Failed to delete shape:", err)
+      );
+      setOptimisticShapes((prev) =>
+        prev.filter((s) => s.id !== contextMenu.shape.id)
+      );
+      setLocalShapeOverrides((prev) => {
+        const next = new Map(prev);
+        next.delete(contextMenu.shape.id);
+        return next;
+      });
+      setSelectedShapeId((id) => (id === contextMenu.shape.id ? null : id));
+    }
+    setContextMenu(null);
+  }, [contextMenu, boardId]);
 
   const handleColorSelect = useCallback(
     (color: string) => {
@@ -511,6 +543,7 @@ export const WhiteboardCanvas = forwardRef<
             clientY={contextMenu.clientY}
             onSelect={handleColorSelect}
             onClose={() => setContextMenu(null)}
+            onDelete={handleDelete}
             forShape={contextMenu.type === "shape"}
           />,
           document.body

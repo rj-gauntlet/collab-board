@@ -27,6 +27,7 @@ interface ColorPaletteMenuProps {
   clientY: number;
   onSelect: (color: string) => void;
   onClose: () => void;
+  onDelete?: () => void;
   /** For shapes: also set stroke to a darker variant of fill */
   forShape?: boolean;
 }
@@ -45,6 +46,7 @@ export function ColorPaletteMenu({
   clientY,
   onSelect,
   onClose,
+  onDelete,
   forShape = false,
 }: ColorPaletteMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -80,6 +82,19 @@ export function ColorPaletteMenu({
       <div className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
         {forShape ? "Shape color" : "Note color"}
       </div>
+      {onDelete && (
+        <button
+          type="button"
+          className="mb-2 w-full rounded-md px-2 py-1.5 text-left text-sm text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/50"
+          onClick={() => {
+            onDelete();
+            onClose();
+          }}
+          role="menuitem"
+        >
+          Delete
+        </button>
+      )}
       <div className="grid grid-cols-4 gap-1.5">
         {STICKY_NOTE_PALETTE.map((color) => (
           <button

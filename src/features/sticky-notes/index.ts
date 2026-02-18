@@ -4,6 +4,7 @@ export { StickyNoteErrorBoundary } from "./StickyNoteErrorBoundary";
 export {
   usePersistedNotes,
   persistNote,
+  deleteNote,
   createDefaultNote,
 } from "./usePersistedNotes";
 export { useRemoteNotes, writeNoteToRtdb } from "./useRemoteNotes";

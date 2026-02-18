@@ -186,7 +186,7 @@ export function ShapeNode({
           ref={trRef}
           name="transformer"
           flipEnabled={false}
-          rotateEnabled={true}
+          rotateEnabled={shape.kind !== "circle"}
           boundBoxFunc={(oldBox, newBox) => {
             if (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20) {
               return oldBox;

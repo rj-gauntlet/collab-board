@@ -8,7 +8,10 @@ import {
   where,
   onSnapshot,
   setDoc,
+  deleteDoc,
 } from "firebase/firestore";
+import { ref, remove } from "firebase/database";
+import { getFirebaseDatabase } from "@/lib/firebase";
 import { Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { writeShapeToRtdb } from "./useRemoteShapes";
@@ -76,6 +79,16 @@ export function usePersistedShapes(boardId: string) {
   }, [boardId]);
 
   return shapes;
+}
+
+export async function deleteShape(
+  boardId: string,
+  shapeId: string
+): Promise<void> {
+  const elementsRef = collection(db, "boards", boardId, "elements");
+  await deleteDoc(doc(elementsRef, shapeId));
+  const rtdb = getFirebaseDatabase();
+  await remove(ref(rtdb, `shapes/${boardId}/${shapeId}`));
 }
 
 export async function persistShape(

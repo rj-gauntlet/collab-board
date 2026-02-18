@@ -8,7 +8,10 @@ import {
   where,
   onSnapshot,
   setDoc,
+  deleteDoc,
 } from "firebase/firestore";
+import { ref, remove } from "firebase/database";
+import { getFirebaseDatabase } from "@/lib/firebase";
 import { Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { writeNoteToRtdb } from "./useRemoteNotes";
@@ -71,6 +74,16 @@ export function usePersistedNotes(boardId: string) {
   }, [boardId]);
 
   return notes;
+}
+
+export async function deleteNote(
+  boardId: string,
+  noteId: string
+): Promise<void> {
+  const elementsRef = collection(db, "boards", boardId, "elements");
+  await deleteDoc(doc(elementsRef, noteId));
+  const rtdb = getFirebaseDatabase();
+  await remove(ref(rtdb, `notes/${boardId}/${noteId}`));
 }
 
 export async function persistNote(
