@@ -19,7 +19,7 @@ export default function Home() {
   const [activeTool, setActiveTool] = useState<Tool>("hand");
   const [perfMonitorVisible, setPerfMonitorVisible] = useState(false);
   const canvasRef = useRef<WhiteboardCanvasHandle>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState(() =>
     typeof window !== "undefined"
       ? { width: window.innerWidth, height: window.innerHeight }
@@ -27,7 +27,7 @@ export default function Home() {
   );
 
   useEffect(() => {
-    const el = containerRef.current;
+    const el = canvasContainerRef.current;
     if (!el) return;
 
     const updateSize = () => {
@@ -51,25 +51,25 @@ export default function Home() {
 
   if (loading) {
     return (
-      <main className="flex h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-blue-600" />
+      <main className="font-sans flex h-screen items-center justify-center bg-[#fffbf0]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#ffe0b2] border-t-[#ff8f00]" />
       </main>
     );
   }
 
   if (!user) {
     return (
-      <main className="flex h-screen flex-col items-center justify-center gap-6 bg-zinc-100 dark:bg-zinc-950">
-        <h1 className="text-2xl font-extrabold text-zinc-900 dark:text-zinc-100">
-          CollabBoard <span className="text-blue-600">MVP</span>
+      <main className="font-sans flex h-screen flex-col items-center justify-center gap-6 bg-[#fffbf0]">
+        <h1 className="font-sans text-2xl font-extrabold tracking-tight text-[#3e2723]">
+          CollabBoard <span className="text-[#ff8f00]">MVP</span>
         </h1>
-        <p className="text-zinc-600 dark:text-zinc-400">
+        <p className="font-sans text-[#5d4037]">
           Sign in with Google to collaborate on the whiteboard
         </p>
         <button
           type="button"
           onClick={() => signInWithGoogle()}
-          className="flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 shadow-md ring-1 ring-zinc-200 transition hover:bg-zinc-50 dark:bg-zinc-800 dark:ring-zinc-700 dark:hover:bg-zinc-700"
+          className="font-sans flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 shadow-md ring-1 ring-[#ffe0b2] transition hover:bg-[#fff8e1]"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">
             <path
@@ -96,12 +96,12 @@ export default function Home() {
   }
 
   return (
-    <main className="flex h-screen flex-col bg-zinc-100 dark:bg-zinc-950">
-      <header className="shrink-0 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+    <main className="font-sans flex h-screen flex-col bg-[#fffbf0]">
+      <header className="shrink-0 border-b border-[#ffe0b2] bg-[#ff8f00] px-4 py-3 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-extrabold text-zinc-900 dark:text-zinc-100 sm:text-2xl">
-              CollabBoard <span className="text-blue-600">MVP</span>
+            <h1 className="font-sans text-xl font-extrabold tracking-tight text-white sm:text-2xl">
+              CollabBoard <span className="font-medium text-[#fff8e1]">MVP</span>
             </h1>
             <UsersList
               boardId={DEMO_BOARD_ID}
@@ -114,8 +114,8 @@ export default function Home() {
               onClick={() => setPerfMonitorVisible((v) => !v)}
               className={`rounded-md p-1.5 transition-colors ${
                 perfMonitorVisible
-                  ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-                  : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                  ? "bg-white/30 text-white"
+                  : "text-white/90 hover:bg-white/20 hover:text-white"
               }`}
               title="Toggle performance monitor"
               aria-pressed={perfMonitorVisible}
@@ -145,7 +145,7 @@ export default function Home() {
                   canvasRef.current?.clearCanvas();
                 }
               }}
-              className="rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+              className="rounded-md p-1.5 text-white/90 transition-colors hover:bg-white/20 hover:text-white"
               title="Clear canvas"
             >
               <svg
@@ -167,31 +167,36 @@ export default function Home() {
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            <span className="font-sans text-sm text-white/90">
               {displayName}
             </span>
             <button
               type="button"
               onClick={() => signOut()}
-              className="rounded-md px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              className="font-sans rounded-md px-3 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
             >
               Sign out
             </button>
+          </div>
+        </div>
+      </header>
+
+      <div
+        ref={canvasContainerRef}
+        className="relative min-h-0 flex-1 w-full"
+        style={{ minHeight: 0 }}
+      >
+        <div className="absolute left-4 top-4 z-10">
+          <div className="rounded-lg border border-[#ffe0b2] bg-[#fff8e1] px-2 py-2 shadow-md">
             <Toolbar
               activeTool={activeTool}
               onToolChange={setActiveTool}
             />
           </div>
         </div>
-      </header>
-
-      <div
-        ref={containerRef}
-        className="min-h-0 flex-1 w-full"
-        style={{ minHeight: 0 }}
-      >
-        <WhiteboardErrorBoundary>
-          <WhiteboardCanvas
+        <div className="h-full w-full">
+          <WhiteboardErrorBoundary>
+            <WhiteboardCanvas
             ref={canvasRef}
             boardId={DEMO_BOARD_ID}
             userId={user.uid}
@@ -201,6 +206,7 @@ export default function Home() {
             activeTool={activeTool}
           />
         </WhiteboardErrorBoundary>
+        </div>
       </div>
     </main>
   );

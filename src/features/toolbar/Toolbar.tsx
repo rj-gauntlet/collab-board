@@ -14,14 +14,14 @@ export function Toolbar({
   onToolChange,
 }: ToolbarProps) {
   return (
-    <div className="flex gap-1 rounded-lg border border-zinc-200 bg-white p-1 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="font-sans flex flex-col gap-1 px-2">
       <button
         type="button"
         onClick={() => onToolChange("hand")}
         className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
           activeTool === "hand"
-            ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-            : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            ? "bg-[#ff8f00] text-white"
+            : "text-[#5d4037] hover:bg-[#ffe0b2]"
         }`}
         title="Hand Tool - Pan the canvas"
       >
@@ -33,8 +33,8 @@ export function Toolbar({
         onClick={() => onToolChange("sticky-note")}
         className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
           activeTool === "sticky-note"
-            ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-            : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            ? "bg-[#ff8f00] text-white"
+            : "text-[#5d4037] hover:bg-[#ffe0b2]"
         }`}
         title="Sticky Note Tool"
       >
@@ -46,8 +46,8 @@ export function Toolbar({
         onClick={() => onToolChange("rect")}
         className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
           activeTool === "rect"
-            ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-            : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            ? "bg-[#ff8f00] text-white"
+            : "text-[#5d4037] hover:bg-[#ffe0b2]"
         }`}
         title="Rectangle - Click to add"
       >
@@ -59,8 +59,8 @@ export function Toolbar({
         onClick={() => onToolChange("triangle")}
         className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
           activeTool === "triangle"
-            ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-            : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            ? "bg-[#ff8f00] text-white"
+            : "text-[#5d4037] hover:bg-[#ffe0b2]"
         }`}
         title="Triangle - Click to add"
       >
@@ -72,8 +72,8 @@ export function Toolbar({
         onClick={() => onToolChange("circle")}
         className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
           activeTool === "circle"
-            ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-            : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            ? "bg-[#ff8f00] text-white"
+            : "text-[#5d4037] hover:bg-[#ffe0b2]"
         }`}
         title="Circle - Click to add"
       >

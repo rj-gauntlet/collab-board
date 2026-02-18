@@ -40,11 +40,11 @@ export function UsersList({
   }, []);
 
   return (
-    <div ref={listRef} className="relative">
+    <div ref={listRef} className="relative font-sans">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
         title="Users on this board"
         aria-expanded={open}
         aria-haspopup="true"
@@ -70,14 +70,14 @@ export function UsersList({
 
       {open && (
         <div
-          className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+          className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-lg border border-[#ffe0b2] bg-[#fff8e1] py-1 shadow-lg"
           role="menu"
         >
-          <div className="border-b border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+          <div className="border-b border-[#ffe0b2] px-3 py-2 text-xs font-medium text-[#5d4037]">
             Users on this board
           </div>
           {users.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="px-3 py-2 text-sm text-[#5d4037]">
               No other users yet
             </div>
           ) : (
@@ -92,15 +92,15 @@ export function UsersList({
                     className={`h-2 w-2 shrink-0 rounded-full ${
                       u.online
                         ? "bg-emerald-500"
-                        : "bg-zinc-300 dark:bg-zinc-600"
+                        : "bg-[#ffcc80]"
                     }`}
                     title={u.online ? "Online" : "Offline"}
                     aria-hidden
                   />
-                  <span className="truncate text-zinc-900 dark:text-zinc-100">
+                  <span className="truncate text-[#3e2723]">
                     {u.displayName}
                     {u.userId === currentUserId && (
-                      <span className="ml-1 text-zinc-500 dark:text-zinc-400">
+                      <span className="ml-1 text-[#5d4037]">
                         (you)
                       </span>
                     )}

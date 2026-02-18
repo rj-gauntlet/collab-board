@@ -427,7 +427,7 @@ export const WhiteboardCanvas = forwardRef<
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-white dark:bg-zinc-900"
+      className="relative h-full w-full overflow-hidden bg-[#fff8e1]"
     >
       <Stage
         width={width}
