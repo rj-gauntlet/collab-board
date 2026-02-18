@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/features/auth";
 import { generateBoardId } from "@/lib/utils";
@@ -10,6 +11,10 @@ import { BoardListItem } from "@/features/boards/BoardListItem";
 export default function Home() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const { boards, loading: boardsLoading } = useUserBoards(user?.uid);
+
+  useEffect(() => {
+    document.title = "CollabBoard";
+  }, []);
 
   const handleCreateBoard = async () => {
     if (!user) return;

@@ -60,6 +60,19 @@ export default function BoardPage() {
   const boardName = useBoardName(boardId ?? null);
   const { exists, loading: existsLoading } = useBoardExists(boardId ?? null, user?.uid);
 
+  useEffect(() => {
+    if (exists === true && boardId) {
+      document.title = boardName
+        ? `CollabBoard | ${boardName}`
+        : `CollabBoard | ${boardId}`;
+    } else {
+      document.title = "CollabBoard";
+    }
+    return () => {
+      document.title = "CollabBoard";
+    };
+  }, [exists, boardId, boardName]);
+
   const handleCreateBoard = async () => {
     if (!user) return;
     const newId = generateBoardId();
