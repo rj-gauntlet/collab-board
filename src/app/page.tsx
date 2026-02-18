@@ -3,13 +3,24 @@
 import Link from "next/link";
 import { useAuth } from "@/features/auth";
 import { generateBoardId } from "@/lib/utils";
+import { useUserBoards } from "@/features/boards/useUserBoards";
+import { addUserBoard, deleteUserBoard } from "@/features/boards/userBoardActions";
+import { BoardListItem } from "@/features/boards/BoardListItem";
 
 export default function Home() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const { boards, loading: boardsLoading } = useUserBoards(user?.uid);
 
-  const handleCreateBoard = () => {
+  const handleCreateBoard = async () => {
+    if (!user) return;
     const newId = generateBoardId();
+    await addUserBoard(user.uid, newId);
     window.open(`/${newId}`, "_blank");
+  };
+
+  const handleDeleteBoard = async (boardId: string) => {
+    if (!user || !confirm("Delete this board? All content will be removed.")) return;
+    await deleteUserBoard(user.uid, boardId);
   };
 
   if (loading) {
@@ -80,17 +91,17 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4">
+      <div className="flex flex-1 flex-col items-center gap-8 px-4 py-8">
         <h2 className="font-sans text-2xl font-bold text-[#3e2723]">
           Your boards
         </h2>
-        <div className="flex flex-col gap-4 sm:flex-row sm:gap-6">
+        <div className="flex w-full max-w-2xl flex-col gap-4">
           <button
             type="button"
-            onClick={handleCreateBoard}
+            onClick={() => handleCreateBoard()}
             className="font-sans flex items-center gap-3 rounded-xl border-2 border-dashed border-[#ff8f00] bg-white px-8 py-6 text-[#3e2723] shadow-md transition hover:bg-[#fff8e1] hover:border-[#ffb74d]"
           >
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ff8f00]/10 text-[#ff8f00]">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#ff8f00]/10 text-[#ff8f00]">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="24"
@@ -108,28 +119,26 @@ export default function Home() {
             </span>
             <span className="font-semibold">Create new board</span>
           </button>
-          <Link
-            href="/demo-board"
-            className="font-sans flex items-center gap-3 rounded-xl border border-[#ffe0b2] bg-white px-8 py-6 text-[#3e2723] shadow-md transition hover:bg-[#fff8e1]"
-          >
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ff8f00]/10 text-[#ff8f00]">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M3 9h18" />
-              </svg>
-            </span>
-            <span className="font-semibold">Open demo board</span>
-          </Link>
+          {boardsLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#ffe0b2] border-t-[#ff8f00]" />
+            </div>
+          ) : boards.length > 0 ? (
+            <ul className="flex flex-col gap-2">
+              {boards.map((board) => (
+                <BoardListItem
+                  key={board.id}
+                  board={board}
+                  userId={user.uid}
+                  onDelete={handleDeleteBoard}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="font-sans text-sm text-[#5d4037]">
+              No boards yet. Create one to get started.
+            </p>
+          )}
         </div>
         <p className="font-sans text-sm text-[#5d4037]">
           Each board has its own URL. Share it to collaborate with others.

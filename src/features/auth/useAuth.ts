@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   onAuthStateChanged,
   signInWithPopup,
+  signInAnonymously,
   signOut as firebaseSignOut,
   GoogleAuthProvider,
   type User,
@@ -15,8 +16,25 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (!u && typeof window !== "undefined") {
+        const isLocalhost =
+          window.location.hostname === "localhost" &&
+          window.location.port === "3000";
+        if (isLocalhost) {
+          try {
+            const { user: anon } = await signInAnonymously(auth);
+            setUser(anon);
+          } catch (err) {
+            console.error("Anonymous sign-in error:", err);
+            setUser(null);
+          }
+        } else {
+          setUser(null);
+        }
+      } else {
+        setUser(u);
+      }
       setLoading(false);
     });
     return () => unsubscribe();

@@ -13,6 +13,8 @@ import { PerformanceMonitor } from "@/components/PerformanceMonitor";
 import { useAuth } from "@/features/auth";
 import { UsersList } from "@/components/UsersList";
 import { generateBoardId } from "@/lib/utils";
+import { addUserBoard } from "@/features/boards/userBoardActions";
+import { useBoardName } from "@/features/boards/useBoardName";
 
 export default function BoardPage() {
   const params = useParams();
@@ -51,9 +53,12 @@ export default function BoardPage() {
 
   const displayName =
     user?.displayName ?? user?.email ?? (user ? "Anonymous" : null);
+  const boardName = useBoardName(boardId ?? null);
 
-  const handleCreateBoard = () => {
+  const handleCreateBoard = async () => {
+    if (!user) return;
     const newId = generateBoardId();
+    await addUserBoard(user.uid, newId);
     window.open(`/${newId}`, "_blank");
   };
 
@@ -128,7 +133,9 @@ export default function BoardPage() {
               currentDisplayName={displayName}
               currentEmail={user.email ?? null}
             />
-            <span className="text-sm text-white/70 font-mono">/{boardId}</span>
+            <span className="text-sm text-white/70 font-mono">
+              {boardName ? boardName : `/${boardId}`}
+            </span>
             <button
               type="button"
               onClick={() => setPerfMonitorVisible((v) => !v)}
