@@ -1,53 +1,16 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import {
-  WhiteboardCanvas,
-  WhiteboardErrorBoundary,
-  type WhiteboardCanvasHandle,
-} from "@/features/whiteboard";
-import { Toolbar } from "@/features/toolbar";
-import type { Tool } from "@/features/toolbar";
-import { PerformanceMonitor } from "@/components/PerformanceMonitor";
+import Link from "next/link";
 import { useAuth } from "@/features/auth";
-import { UsersList } from "@/components/UsersList";
-
-const DEMO_BOARD_ID = "demo-board";
+import { generateBoardId } from "@/lib/utils";
 
 export default function Home() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
-  const [activeTool, setActiveTool] = useState<Tool>("hand");
-  const [perfMonitorVisible, setPerfMonitorVisible] = useState(false);
-  const canvasRef = useRef<WhiteboardCanvasHandle>(null);
-  const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const [canvasSize, setCanvasSize] = useState(() =>
-    typeof window !== "undefined"
-      ? { width: window.innerWidth, height: window.innerHeight }
-      : { width: 800, height: 500 }
-  );
 
-  useEffect(() => {
-    const el = canvasContainerRef.current;
-    if (!el) return;
-
-    const updateSize = () => {
-      const width = el.clientWidth || window.innerWidth;
-      const height = el.clientHeight || window.innerHeight;
-      setCanvasSize((prev) => {
-        const w = Math.floor(width);
-        const h = Math.floor(height);
-        return prev.width === w && prev.height === h ? prev : { width: w, height: h };
-      });
-    };
-
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  const displayName =
-    user?.displayName ?? user?.email ?? (user ? "Anonymous" : null);
+  const handleCreateBoard = () => {
+    const newId = generateBoardId();
+    window.open(`/${newId}`, "_blank");
+  };
 
   if (loading) {
     return (
@@ -95,81 +58,17 @@ export default function Home() {
     );
   }
 
+  const displayName = user.displayName ?? user.email ?? "Anonymous";
+
   return (
-    <main className="font-sans flex h-screen flex-col bg-[#fffbf0]">
+    <main className="font-sans flex min-h-screen flex-col bg-[#fffbf0]">
       <header className="shrink-0 border-b border-[#ffe0b2] bg-[#ff8f00] px-4 py-3 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center justify-between">
+          <h1 className="font-sans text-xl font-extrabold tracking-tight text-white sm:text-2xl">
+            CollabBoard <span className="font-medium text-[#fff8e1]">MVP</span>
+          </h1>
           <div className="flex items-center gap-2">
-            <h1 className="font-sans text-xl font-extrabold tracking-tight text-white sm:text-2xl">
-              CollabBoard <span className="font-medium text-[#fff8e1]">MVP</span>
-            </h1>
-            <UsersList
-              boardId={DEMO_BOARD_ID}
-              currentUserId={user.uid}
-              currentDisplayName={displayName}
-              currentEmail={user.email ?? null}
-            />
-            <button
-              type="button"
-              onClick={() => setPerfMonitorVisible((v) => !v)}
-              className={`rounded-md p-1.5 transition-colors ${
-                perfMonitorVisible
-                  ? "bg-white/30 text-white"
-                  : "text-white/90 hover:bg-white/20 hover:text-white"
-              }`}
-              title="Toggle performance monitor"
-              aria-pressed={perfMonitorVisible}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="M12 20V10" />
-                <path d="M18 20V4" />
-                <path d="M6 20v-4" />
-              </svg>
-            </button>
-            <PerformanceMonitor visible={perfMonitorVisible} />
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm("Clear all content from the canvas?")) {
-                  canvasRef.current?.clearCanvas();
-                }
-              }}
-              className="rounded-md p-1.5 text-white/90 transition-colors hover:bg-white/20 hover:text-white"
-              title="Clear canvas"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="M3 6h18" />
-                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-              </svg>
-            </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-sans text-sm text-white/90">
-              {displayName}
-            </span>
+            <span className="font-sans text-sm text-white/90">{displayName}</span>
             <button
               type="button"
               onClick={() => signOut()}
@@ -181,32 +80,60 @@ export default function Home() {
         </div>
       </header>
 
-      <div
-        ref={canvasContainerRef}
-        className="relative min-h-0 flex-1 w-full"
-        style={{ minHeight: 0 }}
-      >
-        <div className="absolute left-4 top-4 z-10">
-          <div className="rounded-lg border border-[#ffe0b2] bg-[#fff8e1] px-2 py-2 shadow-md">
-            <Toolbar
-              activeTool={activeTool}
-              onToolChange={setActiveTool}
-            />
-          </div>
+      <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4">
+        <h2 className="font-sans text-2xl font-bold text-[#3e2723]">
+          Your boards
+        </h2>
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-6">
+          <button
+            type="button"
+            onClick={handleCreateBoard}
+            className="font-sans flex items-center gap-3 rounded-xl border-2 border-dashed border-[#ff8f00] bg-white px-8 py-6 text-[#3e2723] shadow-md transition hover:bg-[#fff8e1] hover:border-[#ffb74d]"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ff8f00]/10 text-[#ff8f00]">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+            </span>
+            <span className="font-semibold">Create new board</span>
+          </button>
+          <Link
+            href="/demo-board"
+            className="font-sans flex items-center gap-3 rounded-xl border border-[#ffe0b2] bg-white px-8 py-6 text-[#3e2723] shadow-md transition hover:bg-[#fff8e1]"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ff8f00]/10 text-[#ff8f00]">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M3 9h18" />
+              </svg>
+            </span>
+            <span className="font-semibold">Open demo board</span>
+          </Link>
         </div>
-        <div className="h-full w-full">
-          <WhiteboardErrorBoundary>
-            <WhiteboardCanvas
-            ref={canvasRef}
-            boardId={DEMO_BOARD_ID}
-            userId={user.uid}
-            displayName={displayName}
-            width={canvasSize.width}
-            height={canvasSize.height}
-            activeTool={activeTool}
-          />
-        </WhiteboardErrorBoundary>
-        </div>
+        <p className="font-sans text-sm text-[#5d4037]">
+          Each board has its own URL. Share it to collaborate with others.
+        </p>
       </div>
     </main>
   );
