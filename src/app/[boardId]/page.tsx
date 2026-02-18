@@ -15,6 +15,8 @@ import { UsersList } from "@/components/UsersList";
 import { generateBoardId } from "@/lib/utils";
 import { addUserBoard } from "@/features/boards/userBoardActions";
 import { useBoardName } from "@/features/boards/useBoardName";
+import { useBoardExists } from "@/features/boards/useBoardExists";
+import { setBoardName } from "@/features/boards/userBoardActions";
 
 export default function BoardPage() {
   const params = useParams();
@@ -23,6 +25,8 @@ export default function BoardPage() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const [activeTool, setActiveTool] = useState<Tool>("hand");
   const [perfMonitorVisible, setPerfMonitorVisible] = useState(false);
+  const [nameEditing, setNameEditing] = useState(false);
+  const [nameEditValue, setNameEditValue] = useState("");
   const canvasRef = useRef<WhiteboardCanvasHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState(() =>
@@ -54,12 +58,19 @@ export default function BoardPage() {
   const displayName =
     user?.displayName ?? user?.email ?? (user ? "Anonymous" : null);
   const boardName = useBoardName(boardId ?? null);
+  const { exists, loading: existsLoading } = useBoardExists(boardId ?? null, user?.uid);
 
   const handleCreateBoard = async () => {
     if (!user) return;
     const newId = generateBoardId();
     await addUserBoard(user.uid, newId);
     window.open(`/${newId}`, "_blank");
+  };
+
+  const handleSaveBoardName = async () => {
+    setNameEditing(false);
+    if (!boardId) return;
+    await setBoardName(boardId, nameEditValue, user?.uid);
   };
 
   if (loading) {
@@ -116,6 +127,33 @@ export default function BoardPage() {
     );
   }
 
+  if (existsLoading) {
+    return (
+      <main className="font-sans flex h-screen items-center justify-center bg-[#fffbf0]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#ffe0b2] border-t-[#ff8f00]" />
+      </main>
+    );
+  }
+
+  if (exists === false) {
+    return (
+      <main className="font-sans flex h-screen flex-col items-center justify-center gap-6 bg-[#fffbf0]">
+        <h1 className="font-sans text-2xl font-bold text-[#3e2723]">
+          Board not found
+        </h1>
+        <p className="font-sans text-[#5d4037]">
+          This board does not exist. Create a new board from the home page.
+        </p>
+        <a
+          href="/"
+          className="font-sans rounded-lg bg-[#ff8f00] px-4 py-2.5 text-white transition hover:bg-[#e65100]"
+        >
+          Go to Your boards
+        </a>
+      </main>
+    );
+  }
+
   return (
     <main className="font-sans flex h-screen flex-col bg-[#fffbf0]">
       <header className="shrink-0 border-b border-[#ffe0b2] bg-[#ff8f00] px-4 py-3 shadow-sm">
@@ -133,9 +171,55 @@ export default function BoardPage() {
               currentDisplayName={displayName}
               currentEmail={user.email ?? null}
             />
-            <span className="text-sm text-white/70 font-mono">
-              {boardName ? boardName : `/${boardId}`}
-            </span>
+            <div className="flex items-center gap-1">
+              {nameEditing ? (
+                <input
+                  type="text"
+                  value={nameEditValue}
+                  onChange={(e) => setNameEditValue(e.target.value)}
+                  onBlur={handleSaveBoardName}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveBoardName();
+                    if (e.key === "Escape") {
+                      setNameEditing(false);
+                      setNameEditValue(boardName ?? "");
+                    }
+                  }}
+                  autoFocus
+                  placeholder={`/${boardId}`}
+                  className="rounded border border-white/50 bg-white/20 px-2 py-0.5 text-sm text-white placeholder-white/60 outline-none focus:border-white"
+                />
+              ) : (
+                <>
+                  <span className="text-sm text-white/70 font-mono">
+                    {boardName ? boardName : `/${boardId}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNameEditing(true);
+                      setNameEditValue(boardName ?? "");
+                    }}
+                    className="rounded p-1 text-white/70 transition hover:bg-white/20 hover:text-white"
+                    title="Rename board"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    </svg>
+                  </button>
+                </>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setPerfMonitorVisible((v) => !v)}

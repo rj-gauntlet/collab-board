@@ -6,6 +6,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  getDoc,
   getDocs,
   query,
   orderBy,
@@ -19,21 +20,47 @@ const BOARDS_PATH = "boards";
 
 /**
  * Adds a board to the user's list of created boards.
+ * Also creates the board document so the board is considered "existing" (required for viewing).
  */
 export async function addUserBoard(
   userId: string,
   boardId: string
 ): Promise<void> {
-  const boardRef = doc(db, USER_BOARDS_PATH, userId, "boards", boardId);
-  await setDoc(boardRef, {
-    boardId,
-    name: "",
-    createdAt: Timestamp.now(),
-  });
+  const userBoardRef = doc(db, USER_BOARDS_PATH, userId, "boards", boardId);
+  const boardRef = doc(db, BOARDS_PATH, boardId);
+  await Promise.all([
+    setDoc(userBoardRef, {
+      boardId,
+      name: "",
+      createdAt: Timestamp.now(),
+    }),
+    setDoc(boardRef, { name: "", createdAt: Timestamp.now() }, { merge: true }),
+  ]);
 }
 
 /**
- * Updates a board's display name. Writes to both userBoards (for the list) and boards (for the board header).
+ * Sets the board's display name from the board page. Updates boards/{boardId}.
+ * If the user has this board in their userBoards (they created it), also updates that to keep the list in sync.
+ */
+export async function setBoardName(
+  boardId: string,
+  name: string,
+  userId?: string
+): Promise<void> {
+  const trimmed = name.trim();
+  const boardRef = doc(db, BOARDS_PATH, boardId);
+  await setDoc(boardRef, { name: trimmed }, { merge: true });
+  if (userId) {
+    const userBoardRef = doc(db, USER_BOARDS_PATH, userId, "boards", boardId);
+    const snap = await getDoc(userBoardRef);
+    if (snap.exists()) {
+      await updateDoc(userBoardRef, { name: trimmed });
+    }
+  }
+}
+
+/**
+ * Updates a board's display name from the list. Writes to both userBoards (for the list) and boards (for the board header).
  */
 export async function updateBoardName(
   userId: string,
@@ -61,15 +88,18 @@ export async function removeUserBoard(
 }
 
 /**
- * Removes the board from the user's list and clears all board content.
+ * Removes the board from the user's list, clears all board content, and deletes the board document.
+ * After deletion, links to the board will show "Board not found".
  */
 export async function deleteUserBoard(
   userId: string,
   boardId: string
 ): Promise<void> {
+  const boardRef = doc(db, BOARDS_PATH, boardId);
   await Promise.all([
     removeUserBoard(userId, boardId),
     clearBoard(boardId),
+    deleteDoc(boardRef),
   ]);
 }
 
