@@ -5,7 +5,7 @@ runConfig:
   # Next.js 15 requires at least Node 18 or 20
   runtime: "nodejs20"
   cpu: 1
-  memoryMiB: 1024
+  memoryMiB: 512
 
 # Firebase client config (needed at BUILD so Next.js can inline NEXT_PUBLIC_* for the browser)
 env:
