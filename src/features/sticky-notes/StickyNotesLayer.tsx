@@ -5,6 +5,7 @@ import { Layer, Rect, Text } from "react-konva";
 import { StickyNote } from "./StickyNote";
 import { useRemoteDragging } from "./useRemoteDragging";
 import { persistNote } from "./usePersistedNotes";
+import { snapPos } from "@/features/whiteboard/snapGrid";
 import type { StickyNoteElement } from "./types";
 
 const PADDING = 8;
@@ -23,6 +24,7 @@ interface StickyNotesLayerProps {
   onDragStart: (elementId: string) => void;
   onDragMove: (elementId: string, x: number, y: number) => void;
   onDragEnd: () => void;
+  snapEnabled?: boolean;
   x?: number;
   y?: number;
   scaleX?: number;
@@ -42,6 +44,7 @@ export function StickyNotesLayer({
   onDragStart,
   onDragMove,
   onDragEnd,
+  snapEnabled = false,
   x = 0,
   y = 0,
   scaleX = 1,
@@ -76,10 +79,11 @@ export function StickyNotesLayer({
   const handleDragEnd = useCallback(
     async (note: StickyNoteElement, x: number, y: number) => {
       onDragEnd();
+      const snapped = snapPos(x, y, snapEnabled);
       const updated: StickyNoteElement = {
         ...note,
-        x,
-        y,
+        x: snapped.x,
+        y: snapped.y,
         updatedAt: Date.now(),
       };
       onNoteUpdate(updated);
@@ -89,7 +93,7 @@ export function StickyNotesLayer({
         console.error("Failed to persist note position:", err);
       }
     },
-    [boardId, onDragEnd, onNoteUpdate]
+    [boardId, onDragEnd, onNoteUpdate, snapEnabled]
   );
 
   return (

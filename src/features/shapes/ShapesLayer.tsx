@@ -6,6 +6,7 @@ import Konva from "konva";
 import { ShapeNode } from "./ShapeNode";
 import { useRemoteDragging } from "@/features/sticky-notes/useRemoteDragging";
 import { persistShape } from "./usePersistedShapes";
+import { snapPos } from "@/features/whiteboard/snapGrid";
 import type { ShapeElement } from "./types";
 
 interface ShapesLayerProps {
@@ -19,6 +20,7 @@ interface ShapesLayerProps {
   onDragStart: (elementId: string) => void;
   onDragMove: (elementId: string, x: number, y: number) => void;
   onDragEnd: () => void;
+  snapEnabled?: boolean;
   x?: number;
   y?: number;
   scaleX?: number;
@@ -36,6 +38,7 @@ export function ShapesLayer({
   onDragStart,
   onDragMove,
   onDragEnd,
+  snapEnabled = false,
   x = 0,
   y = 0,
   scaleX = 1,
@@ -128,7 +131,22 @@ export function ShapesLayer({
             isMultiSelectMode={isMultiSelect}
             onSelect={(shiftKey) => onSelectShape(shape.id, shiftKey)}
             onRegisterSelectRef={onRegisterSelectRef}
-            onChange={(updates) => handleChange(shape, updates)}
+            onChange={(updates) => {
+              // Snap position on drag-end (position-only update, no resize/rotation)
+              if (
+                snapEnabled &&
+                updates.x !== undefined &&
+                updates.y !== undefined &&
+                updates.width === undefined &&
+                updates.height === undefined &&
+                updates.rotation === undefined
+              ) {
+                const snapped = snapPos(updates.x, updates.y, true);
+                handleChange(shape, { ...updates, x: snapped.x, y: snapped.y });
+              } else {
+                handleChange(shape, updates);
+              }
+            }}
             onContextMenu={(evt) => onShapeContextMenu?.(shape, evt)}
             onDragStart={() => onDragStart(shape.id)}
             onDragMove={(dx, dy) => onDragMove(shape.id, dx, dy)}

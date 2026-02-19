@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { StickyNote, Square, Triangle, Circle, Hand, MousePointer2, Trash2 } from "lucide-react";
+import { StickyNote, Square, Triangle, Circle, Hand, MousePointer2, Trash2, Link2, Type, Layout } from "lucide-react";
 import type { Tool } from "./types";
 
 interface ToolbarProps {
@@ -55,6 +55,45 @@ export function Toolbar({
       >
         <MousePointer2 size={18} />
         <span>Select</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onToolChange("connector")}
+        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+          activeTool === "connector"
+            ? "bg-[#ff8f00] text-white"
+            : "text-[#5d4037] hover:bg-[#ffe0b2]"
+        }`}
+        title="Connector - Click first object, then second to draw a line/arrow"
+      >
+        <Link2 size={18} />
+        <span>Connector</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onToolChange("text")}
+        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+          activeTool === "text"
+            ? "bg-[#ff8f00] text-white"
+            : "text-[#5d4037] hover:bg-[#ffe0b2]"
+        }`}
+        title="Text - Click to add standalone text"
+      >
+        <Type size={18} />
+        <span>Text</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onToolChange("frame")}
+        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+          activeTool === "frame"
+            ? "bg-[#ff8f00] text-white"
+            : "text-[#5d4037] hover:bg-[#ffe0b2]"
+        }`}
+        title="Frame - Click to add a frame to group content"
+      >
+        <Layout size={18} />
+        <span>Frame</span>
       </button>
       <button
         type="button"

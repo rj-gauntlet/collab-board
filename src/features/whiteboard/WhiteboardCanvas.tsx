@@ -31,14 +31,43 @@ import {
   createDefaultShape,
 } from "@/features/shapes";
 import { useRemoteShapes } from "@/features/shapes/useRemoteShapes";
+import {
+  ConnectorsLayer,
+  usePersistedConnectors,
+  createDefaultConnector,
+  persistConnector,
+} from "@/features/connectors";
+import {
+  TextElementsLayer,
+  usePersistedTextElements,
+  createDefaultTextElement,
+  persistTextElement,
+  deleteTextElement,
+} from "@/features/text-elements";
+import {
+  FramesLayer,
+  usePersistedFrames,
+  createDefaultFrame,
+  persistFrame,
+  deleteFrame,
+} from "@/features/frames";
 import { usePanZoom } from "@/features/pan-zoom";
 import {
   ColorPaletteMenu,
   getShapeStrokeForFill,
 } from "@/components/ColorPaletteMenu";
+import { ZoomControls } from "@/components/ZoomControls";
+import { TextFormatBar } from "@/components/TextFormatBar";
+import { GridLayer } from "./GridLayer";
+import { exportBoardAsPng } from "./exportBoard";
+import { snapPos, GRID_SIZE } from "./snapGrid";
+import { useUndoRedo, type BoardSnapshot } from "./useUndoRedo";
 import type { StickyNoteElement } from "@/features/sticky-notes";
 import type { Tool } from "@/features/toolbar";
 import type { ShapeElement } from "@/features/shapes";
+import type { TextElement } from "@/features/text-elements";
+import type { FrameElement } from "@/features/frames";
+import type { ConnectorElement } from "@/features/connectors";
 
 export interface WhiteboardCanvasHandle {
   getNotes: () => StickyNoteElement[];
@@ -47,6 +76,9 @@ export interface WhiteboardCanvasHandle {
   ) => void;
   clearCanvas: () => Promise<void>;
   deleteSelection: () => void;
+  exportImage: () => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 const SHAPE_TOOLS = ["rect", "triangle", "circle"] as const;
@@ -60,7 +92,11 @@ interface WhiteboardCanvasProps {
   displayName?: string | null;
   width: number;
   height: number;
+  /** Pass window.devicePixelRatio so the canvas buffer stays crisp across browser zoom changes. */
+  pixelRatio?: number;
   activeTool: Tool;
+  snapEnabled?: boolean;
+  gridVisible?: boolean;
   onSelectionChange?: (selectedCount: number) => void;
 }
 
@@ -91,13 +127,53 @@ function isClickOnTransformer(target: Konva.Node | null): boolean {
   return false;
 }
 
+type ClickedElementType = "note" | "shape";
+function getClickedElement(
+  target: Konva.Node | null
+): { id: string; type: ClickedElementType } | null {
+  let node: Konva.Node | null = target;
+  while (node) {
+    const name = node.name();
+    if (name === "sticky-note" || name === "shape") {
+      const id = node.getAttr("data-elementId") as string | undefined;
+      if (id)
+        return {
+          id,
+          type: name === "sticky-note" ? "note" : "shape",
+        };
+      return null;
+    }
+    node = node.getParent();
+  }
+  return null;
+}
+
+function isClickOnTextElement(target: Konva.Node | null): boolean {
+  let node: Konva.Node | null = target;
+  while (node) {
+    if (node.name() === "text-element") return true;
+    node = node.getParent();
+  }
+  return false;
+}
+
+function isClickOnFrame(target: Konva.Node | null): boolean {
+  let node: Konva.Node | null = target;
+  while (node) {
+    if (node.name() === "frame") return true;
+    node = node.getParent();
+  }
+  return false;
+}
+
 export const WhiteboardCanvas = forwardRef<
   WhiteboardCanvasHandle,
   WhiteboardCanvasProps
 >(function WhiteboardCanvas(
-  { boardId, userId, displayName, width, height, activeTool, onSelectionChange },
+  { boardId, userId, displayName, width, height, pixelRatio = 1, activeTool, snapEnabled = false, gridVisible = false, onSelectionChange },
   ref
 ) {
+  const stageRef = useRef<Konva.Stage>(null);
   const [optimisticNotes, setOptimisticNotes] = useState<StickyNoteElement[]>([]);
   const [localNoteOverrides, setLocalNoteOverrides] = useState<
     Map<string, StickyNoteElement>
@@ -116,6 +192,10 @@ export const WhiteboardCanvas = forwardRef<
   const [localShapeOverrides, setLocalShapeOverrides] = useState<
     Map<string, import("@/features/shapes").ShapeElement>
   >(new Map());
+  const [connectorFrom, setConnectorFrom] = useState<{
+    id: string;
+    type: "note" | "shape";
+  } | null>(null);
   const [draggingState, setDraggingState] = useState<{
     isDragging: boolean;
     elementId: string | null;
@@ -125,11 +205,30 @@ export const WhiteboardCanvas = forwardRef<
 
   type ContextMenu =
     | { type: "note"; note: StickyNoteElement; clientX: number; clientY: number }
-    | { type: "shape"; shape: ShapeElement; clientX: number; clientY: number };
+    | { type: "shape"; shape: ShapeElement; clientX: number; clientY: number }
+    | { type: "text"; text: TextElement; clientX: number; clientY: number }
+    | { type: "frame"; frame: FrameElement; clientX: number; clientY: number };
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
 
+  const [optimisticTextElements, setOptimisticTextElements] = useState<TextElement[]>([]);
+  const [localTextOverrides, setLocalTextOverrides] = useState<Map<string, TextElement>>(new Map());
+  const [optimisticFrames, setOptimisticFrames] = useState<FrameElement[]>([]);
+  const [localFrameOverrides, setLocalFrameOverrides] = useState<Map<string, FrameElement>>(new Map());
   const [clipboardNotes, setClipboardNotes] = useState<StickyNoteElement[]>([]);
   const [clipboardShapes, setClipboardShapes] = useState<ShapeElement[]>([]);
+  const [clipboardTextElements, setClipboardTextElements] = useState<TextElement[]>([]);
+  const [clipboardFrames, setClipboardFrames] = useState<FrameElement[]>([]);
+  const [editingFrameTitle, setEditingFrameTitle] = useState<{
+    frameId: string;
+    initialTitle: string;
+  } | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingConnectorLabel, setEditingConnectorLabel] = useState<{
+    connectorId: string;
+    boardMidX: number;
+    boardMidY: number;
+    label: string;
+  } | null>(null);
 
   const {
     scale,
@@ -140,6 +239,12 @@ export const WhiteboardCanvas = forwardRef<
     handlePanStart,
     handlePanMove,
     handlePanEnd,
+    resetView,
+    fitToContent,
+    zoomIn,
+    zoomOut,
+    handlePinch,
+    handlePinchEnd,
   } = usePanZoom(width, height);
 
   const { syncCursor } = useSyncCursor(boardId, userId, displayName);
@@ -149,6 +254,9 @@ export const WhiteboardCanvas = forwardRef<
 
   const persistedShapes = usePersistedShapes(boardId);
   const remoteShapes = useRemoteShapes(boardId);
+  const connectors = usePersistedConnectors(boardId);
+  const persistedTextElements = usePersistedTextElements(boardId);
+  const persistedFrames = usePersistedFrames(boardId);
 
   useSyncDragging(
     boardId,
@@ -158,6 +266,51 @@ export const WhiteboardCanvas = forwardRef<
     draggingState.x,
     draggingState.y
   );
+
+  // ── Refs (populated after derived-state computation each render) ────────────
+  const notesRef = useRef<StickyNoteElement[]>([]);
+  const shapesRef = useRef<ShapeElement[]>([]);
+  const textElementsRef = useRef<TextElement[]>([]);
+  const framesRef = useRef<FrameElement[]>([]);
+
+  // ── Undo / Redo (must be defined before any callback that calls captureSnapshot) ──
+  const handleRestore = useCallback((snapshot: BoardSnapshot) => {
+    setLocalNoteOverrides(() => {
+      const m = new Map<string, StickyNoteElement>();
+      snapshot.notes.forEach((n) => m.set(n.id, n));
+      return m;
+    });
+    setLocalShapeOverrides(() => {
+      const m = new Map<string, ShapeElement>();
+      snapshot.shapes.forEach((s) => m.set(s.id, s));
+      return m;
+    });
+    setLocalTextOverrides(() => {
+      const m = new Map<string, TextElement>();
+      snapshot.textElements.forEach((t) => m.set(t.id, t));
+      return m;
+    });
+    setLocalFrameOverrides(() => {
+      const m = new Map<string, FrameElement>();
+      snapshot.frames.forEach((f) => m.set(f.id, f));
+      return m;
+    });
+    snapshot.notes.forEach((n) => persistNote(boardId, n).catch(console.error));
+    snapshot.shapes.forEach((s) => persistShape(boardId, s).catch(console.error));
+    snapshot.textElements.forEach((t) => persistTextElement(boardId, t).catch(console.error));
+    snapshot.frames.forEach((f) => persistFrame(boardId, f).catch(console.error));
+  }, [boardId]);
+
+  const { push: pushSnapshot, undo: undoAction, redo: redoAction } = useUndoRedo(handleRestore);
+
+  const captureSnapshot = useCallback(() => {
+    pushSnapshot({
+      notes: notesRef.current,
+      shapes: shapesRef.current,
+      textElements: textElementsRef.current,
+      frames: framesRef.current,
+    });
+  }, [pushSnapshot]);
 
   const handleNoteUpdate = useCallback((note: StickyNoteElement) => {
     setLocalNoteOverrides((prev) => {
@@ -169,6 +322,7 @@ export const WhiteboardCanvas = forwardRef<
 
   const handleCreateNote = useCallback(
     (x: number, y: number) => {
+      captureSnapshot();
       const note = createDefaultNote(x, y, userId);
       setOptimisticNotes((prev) => [...prev, note]);
       persistNote(boardId, note).catch((err) => {
@@ -176,11 +330,12 @@ export const WhiteboardCanvas = forwardRef<
         setOptimisticNotes((prev) => prev.filter((n) => n.id !== note.id));
       });
     },
-    [boardId, userId]
+    [boardId, userId, captureSnapshot]
   );
 
   const handleCreateShape = useCallback(
     (x: number, y: number) => {
+      captureSnapshot();
       const kind = isShapeTool(activeTool) ? activeTool : "rect";
       const shape = createDefaultShape(x, y, userId, kind);
       setOptimisticShapes((prev) => [...prev, shape]);
@@ -189,7 +344,7 @@ export const WhiteboardCanvas = forwardRef<
         setOptimisticShapes((prev) => prev.filter((s) => s.id !== shape.id));
       });
     },
-    [boardId, userId, activeTool]
+    [boardId, userId, activeTool, captureSnapshot]
   );
 
   const handleShapeUpdate = useCallback(
@@ -219,7 +374,94 @@ export const WhiteboardCanvas = forwardRef<
     []
   );
 
+  const handleCreateText = useCallback(
+    (x: number, y: number) => {
+      captureSnapshot();
+      const text = createDefaultTextElement(x, y, userId);
+      setOptimisticTextElements((prev) => [...prev, text]);
+      persistTextElement(boardId, text).catch((err) => {
+        console.error("Failed to create text:", err);
+        setOptimisticTextElements((prev) => prev.filter((t) => t.id !== text.id));
+      });
+    },
+    [boardId, userId, captureSnapshot]
+  );
+
+  const handleTextUpdate = useCallback((text: TextElement) => {
+    setLocalTextOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(text.id, text);
+      return next;
+    });
+  }, []);
+
+  const handleSelectText = useCallback((id: string, addToSelection: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (addToSelection) {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      } else {
+        next.clear();
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleTextContextMenu = useCallback(
+    (text: TextElement, evt: MouseEvent) => {
+      evt.preventDefault();
+      setContextMenu({ type: "text", text, clientX: evt.clientX, clientY: evt.clientY });
+    },
+    []
+  );
+
+  const handleCreateFrame = useCallback(
+    (x: number, y: number) => {
+      captureSnapshot();
+      const frame = createDefaultFrame(x, y, userId);
+      setOptimisticFrames((prev) => [...prev, frame]);
+      persistFrame(boardId, frame).catch((err) => {
+        console.error("Failed to create frame:", err);
+        setOptimisticFrames((prev) => prev.filter((f) => f.id !== frame.id));
+      });
+    },
+    [boardId, userId, captureSnapshot]
+  );
+
+  const handleFrameUpdate = useCallback((frame: FrameElement) => {
+    setLocalFrameOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(frame.id, frame);
+      return next;
+    });
+  }, []);
+
+  const handleSelectFrame = useCallback((id: string, addToSelection: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (addToSelection) {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      } else {
+        next.clear();
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleFrameContextMenu = useCallback(
+    (frame: FrameElement, evt: MouseEvent) => {
+      evt.preventDefault();
+      setContextMenu({ type: "frame", frame, clientX: evt.clientX, clientY: evt.clientY });
+    },
+    []
+  );
+
   const deleteByIds = useCallback((ids: Set<string>) => {
+    captureSnapshot();
     for (const id of ids) {
       const asNote = notesRef.current.some((n) => n.id === id);
       if (asNote) {
@@ -234,15 +476,42 @@ export const WhiteboardCanvas = forwardRef<
         });
         setEditingNoteId((eid) => (eid === id ? null : eid));
       } else {
-        deleteShape(boardId, id).catch((err) =>
-          console.error("Failed to delete shape:", err)
-        );
-        setOptimisticShapes((prev) => prev.filter((s) => s.id !== id));
-        setLocalShapeOverrides((prev) => {
-          const next = new Map(prev);
-          next.delete(id);
-          return next;
-        });
+        const asShape = shapesRef.current.some((s) => s.id === id);
+        const asText = textElementsRef.current.some((t) => t.id === id);
+        if (asShape) {
+          deleteShape(boardId, id).catch((err) =>
+            console.error("Failed to delete shape:", err)
+          );
+          setOptimisticShapes((prev) => prev.filter((s) => s.id !== id));
+          setLocalShapeOverrides((prev) => {
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+          });
+        } else if (asText) {
+          deleteTextElement(boardId, id).catch((err) =>
+            console.error("Failed to delete text:", err)
+          );
+          setOptimisticTextElements((prev) => prev.filter((t) => t.id !== id));
+          setLocalTextOverrides((prev) => {
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+          });
+        } else {
+          const asFrame = framesRef.current.some((f) => f.id === id);
+          if (asFrame) {
+            deleteFrame(boardId, id).catch((err) =>
+              console.error("Failed to delete frame:", err)
+            );
+            setOptimisticFrames((prev) => prev.filter((f) => f.id !== id));
+            setLocalFrameOverrides((prev) => {
+              const next = new Map(prev);
+              next.delete(id);
+              return next;
+            });
+          }
+        }
       }
     }
     setSelectedIds((prev) => {
@@ -254,7 +523,14 @@ export const WhiteboardCanvas = forwardRef<
 
   const handleDelete = useCallback(() => {
     if (!contextMenu) return;
-    const contextItemId = contextMenu.type === "note" ? contextMenu.note.id : contextMenu.shape.id;
+    const contextItemId =
+      contextMenu.type === "note"
+        ? contextMenu.note.id
+        : contextMenu.type === "shape"
+          ? contextMenu.shape.id
+          : contextMenu.type === "text"
+            ? contextMenu.text.id
+            : contextMenu.frame.id;
     const deleteIds = selectedIds.has(contextItemId)
       ? new Set(selectedIds)
       : new Set<string>([contextItemId]);
@@ -280,7 +556,7 @@ export const WhiteboardCanvas = forwardRef<
         persistNote(boardId, updated).catch((err) =>
           console.error("Failed to persist note color:", err)
         );
-      } else {
+      } else if (contextMenu.type === "shape") {
         const updated: ShapeElement = {
           ...contextMenu.shape,
           fill: color,
@@ -291,18 +567,42 @@ export const WhiteboardCanvas = forwardRef<
         persistShape(boardId, updated).catch((err) =>
           console.error("Failed to persist shape color:", err)
         );
+      } else if (contextMenu.type === "text") {
+        const updated: TextElement = {
+          ...contextMenu.text,
+          fill: color,
+          updatedAt: Date.now(),
+        };
+        handleTextUpdate(updated);
+        persistTextElement(boardId, updated).catch((err) =>
+          console.error("Failed to persist text color:", err)
+        );
+      } else {
+        const updated: FrameElement = {
+          ...contextMenu.frame,
+          fill: color,
+          updatedAt: Date.now(),
+        };
+        handleFrameUpdate(updated);
+        persistFrame(boardId, updated).catch((err) =>
+          console.error("Failed to persist frame color:", err)
+        );
       }
       setContextMenu(null);
     },
-    [contextMenu, boardId, handleNoteUpdate, handleShapeUpdate]
+    [contextMenu, boardId, handleNoteUpdate, handleShapeUpdate, handleTextUpdate, handleFrameUpdate]
   );
 
   const clearCanvas = useCallback(async () => {
     await clearBoard(boardId);
     setOptimisticNotes([]);
     setOptimisticShapes([]);
+    setOptimisticTextElements([]);
+    setOptimisticFrames([]);
     setLocalNoteOverrides(new Map());
     setLocalShapeOverrides(new Map());
+    setLocalTextOverrides(new Map());
+    setLocalFrameOverrides(new Map());
   }, [boardId]);
 
   const createNotesFromAI = useCallback(
@@ -323,9 +623,6 @@ export const WhiteboardCanvas = forwardRef<
     },
     [boardId, userId]
   );
-
-  const notesRef = useRef<StickyNoteElement[]>([]);
-  const shapesRef = useRef<ShapeElement[]>([]);
 
   const persistedNoteIds = new Set(persistedNotes.map((n) => n.id));
   useEffect(() => {
@@ -358,6 +655,40 @@ export const WhiteboardCanvas = forwardRef<
       return next;
     });
   }, [persistedShapes]);
+
+  const persistedTextIds = new Set(persistedTextElements.map((t) => t.id));
+  useEffect(() => {
+    setOptimisticTextElements((prev) =>
+      prev.filter((t) => !persistedTextIds.has(t.id))
+    );
+  }, [persistedTextElements]);
+
+  useEffect(() => {
+    setLocalTextOverrides((prev) => {
+      const next = new Map(prev);
+      for (const t of persistedTextElements) {
+        next.delete(t.id);
+      }
+      return next;
+    });
+  }, [persistedTextElements]);
+
+  const persistedFrameIds = new Set(persistedFrames.map((f) => f.id));
+  useEffect(() => {
+    setOptimisticFrames((prev) =>
+      prev.filter((f) => !persistedFrameIds.has(f.id))
+    );
+  }, [persistedFrames]);
+
+  useEffect(() => {
+    setLocalFrameOverrides((prev) => {
+      const next = new Map(prev);
+      for (const f of persistedFrames) {
+        next.delete(f.id);
+      }
+      return next;
+    });
+  }, [persistedFrames]);
 
   const noteMap = new Map<string, StickyNoteElement>();
   for (const n of persistedNotes) {
@@ -401,6 +732,36 @@ export const WhiteboardCanvas = forwardRef<
   );
   shapesRef.current = shapes;
 
+  const textMap = new Map<string, TextElement>();
+  for (const t of persistedTextElements) {
+    textMap.set(t.id, localTextOverrides.get(t.id) ?? t);
+  }
+  for (const t of optimisticTextElements) {
+    const existing = textMap.get(t.id);
+    if (!existing || t.updatedAt >= existing.updatedAt) {
+      textMap.set(t.id, t);
+    }
+  }
+  const textElements = Array.from(textMap.values()).sort(
+    (a, b) => a.createdAt - b.createdAt
+  );
+  textElementsRef.current = textElements;
+
+  const frameMap = new Map<string, FrameElement>();
+  for (const f of persistedFrames) {
+    frameMap.set(f.id, localFrameOverrides.get(f.id) ?? f);
+  }
+  for (const f of optimisticFrames) {
+    const existing = frameMap.get(f.id);
+    if (!existing || f.updatedAt >= existing.updatedAt) {
+      frameMap.set(f.id, f);
+    }
+  }
+  const frames = Array.from(frameMap.values()).sort(
+    (a, b) => a.createdAt - b.createdAt
+  );
+  framesRef.current = frames;
+
   function nextId(): string {
     return typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -410,9 +771,13 @@ export const WhiteboardCanvas = forwardRef<
   const handleDuplicate = useCallback(() => {
     const notes = notesRef.current;
     const shapesList = shapesRef.current;
+    const textList = textElementsRef.current;
+    const framesList = framesRef.current;
     const offset = 20;
     const newNoteIds: string[] = [];
     const newShapeIds: string[] = [];
+    const newTextIds: string[] = [];
+    const newFrameIds: string[] = [];
     for (const id of selectedIds) {
       const note = notes.find((n) => n.id === id);
       if (note) {
@@ -450,19 +815,59 @@ export const WhiteboardCanvas = forwardRef<
           setOptimisticShapes((prev) => prev.filter((s) => s.id !== clone.id));
         });
         newShapeIds.push(clone.id);
+      } else {
+        const textEl = textList.find((t) => t.id === id);
+        if (textEl) {
+          const clone: TextElement = {
+            ...textEl,
+            id: nextId(),
+            x: textEl.x + offset,
+            y: textEl.y + offset,
+            createdBy: userId,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          setOptimisticTextElements((prev) => [...prev, clone]);
+          persistTextElement(boardId, clone).catch((err) => {
+            console.error("Failed to duplicate text:", err);
+            setOptimisticTextElements((prev) => prev.filter((t) => t.id !== clone.id));
+          });
+          newTextIds.push(clone.id);
+        } else {
+          const frameEl = framesList.find((f) => f.id === id);
+          if (frameEl) {
+            const clone: FrameElement = {
+              ...frameEl,
+              id: nextId(),
+              x: frameEl.x + offset,
+              y: frameEl.y + offset,
+              createdBy: userId,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+            setOptimisticFrames((prev) => [...prev, clone]);
+            persistFrame(boardId, clone).catch((err) => {
+              console.error("Failed to duplicate frame:", err);
+              setOptimisticFrames((prev) => prev.filter((f) => f.id !== clone.id));
+            });
+            newFrameIds.push(clone.id);
+          }
+        }
       }
     }
-    setSelectedIds(new Set([...newNoteIds, ...newShapeIds]));
+    setSelectedIds(new Set([...newNoteIds, ...newShapeIds, ...newTextIds, ...newFrameIds]));
     setContextMenu(null);
   }, [boardId, userId, selectedIds]);
 
   const handleCopy = useCallback(() => {
     const notes = notesRef.current;
     const shapesList = shapesRef.current;
-    const copiedNotes = notes.filter((n) => selectedIds.has(n.id));
-    const copiedShapes = shapesList.filter((s) => selectedIds.has(s.id));
-    setClipboardNotes(copiedNotes);
-    setClipboardShapes(copiedShapes);
+    const textList = textElementsRef.current;
+    const framesList = framesRef.current;
+    setClipboardNotes(notes.filter((n) => selectedIds.has(n.id)));
+    setClipboardShapes(shapesList.filter((s) => selectedIds.has(s.id)));
+    setClipboardTextElements(textList.filter((t) => selectedIds.has(t.id)));
+    setClipboardFrames(framesList.filter((f) => selectedIds.has(f.id)));
     setContextMenu(null);
   }, [selectedIds]);
 
@@ -503,9 +908,43 @@ export const WhiteboardCanvas = forwardRef<
       });
       newIds.push(clone.id);
     }
+    for (const textEl of clipboardTextElements) {
+      const clone: TextElement = {
+        ...textEl,
+        id: nextId(),
+        x: textEl.x + offset,
+        y: textEl.y + offset,
+        createdBy: userId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      setOptimisticTextElements((prev) => [...prev, clone]);
+      persistTextElement(boardId, clone).catch((err) => {
+        console.error("Failed to paste text:", err);
+        setOptimisticTextElements((prev) => prev.filter((t) => t.id !== clone.id));
+      });
+      newIds.push(clone.id);
+    }
+    for (const frameEl of clipboardFrames) {
+      const clone: FrameElement = {
+        ...frameEl,
+        id: nextId(),
+        x: frameEl.x + offset,
+        y: frameEl.y + offset,
+        createdBy: userId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      setOptimisticFrames((prev) => [...prev, clone]);
+      persistFrame(boardId, clone).catch((err) => {
+        console.error("Failed to paste frame:", err);
+        setOptimisticFrames((prev) => prev.filter((f) => f.id !== clone.id));
+      });
+      newIds.push(clone.id);
+    }
     if (newIds.length > 0) setSelectedIds(new Set(newIds));
     setContextMenu(null);
-  }, [boardId, userId, clipboardNotes, clipboardShapes]);
+  }, [boardId, userId, clipboardNotes, clipboardShapes, clipboardTextElements, clipboardFrames]);
 
   useEffect(() => {
     onSelectionChange?.(selectedIds.size);
@@ -518,8 +957,14 @@ export const WhiteboardCanvas = forwardRef<
       createNotesFromAI,
       clearCanvas,
       deleteSelection: handleDeleteSelection,
+      exportImage: () => {
+        const stage = stageRef.current;
+        if (stage) exportBoardAsPng(stage);
+      },
+      undo: undoAction,
+      redo: redoAction,
     }),
-    [createNotesFromAI, clearCanvas, handleDeleteSelection]
+    [createNotesFromAI, clearCanvas, handleDeleteSelection, undoAction, redoAction]
   );
 
   const handleSelectNote = useCallback((id: string, addToSelection: boolean) => {
@@ -562,24 +1007,66 @@ export const WhiteboardCanvas = forwardRef<
       }
 
       const clickOnEmpty =
-        target === stage || (!isClickOnStickyNote(target) && !isClickOnShape(target) && !isClickOnTransformer(target));
+        target === stage ||
+        (!isClickOnStickyNote(target) &&
+          !isClickOnShape(target) &&
+          !isClickOnTextElement(target) &&
+          !isClickOnTransformer(target));
 
       if (clickOnEmpty && pos) {
         const { x, y } = screenToBoard(pos.x, pos.y);
         if (activeTool === "select") {
           setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
           setSelectedIds(new Set());
+        } else if (activeTool === "connector") {
+          setConnectorFrom(null);
+          setSelectedIds(new Set());
+          setSelectionBox(null);
         } else {
           setSelectedIds(new Set());
           setSelectionBox(null);
         }
       }
 
+      if (activeTool === "connector") {
+        const el = getClickedElement(target);
+        if (el) {
+          if (connectorFrom) {
+            if (connectorFrom.id !== el.id) {
+              const connector = createDefaultConnector(
+                connectorFrom.id,
+                el.id,
+                connectorFrom.type,
+                el.type,
+                userId,
+                "arrow"
+              );
+              persistConnector(boardId, connector).catch((err) =>
+                console.error("Failed to create connector:", err)
+              );
+            }
+            setConnectorFrom(null);
+          } else {
+            setConnectorFrom({ id: el.id, type: el.type });
+          }
+          return;
+        }
+        return;
+      }
+
       if (isClickOnStickyNote(target)) return;
       if (isClickOnShape(target)) return;
+      if (isClickOnTextElement(target)) return;
+      if (isClickOnFrame(target)) return;
       if (isClickOnTransformer(target)) return;
 
-      if (activeTool === "sticky-note" && pos) {
+      if (activeTool === "frame" && pos) {
+        const { x, y } = screenToBoard(pos.x, pos.y);
+        handleCreateFrame(x, y);
+      } else if (activeTool === "text" && pos) {
+        const { x, y } = screenToBoard(pos.x, pos.y);
+        handleCreateText(x, y);
+      } else if (activeTool === "sticky-note" && pos) {
         const { x, y } = screenToBoard(pos.x, pos.y);
         handleCreateNote(x, y);
       } else if (isShapeTool(activeTool) && pos) {
@@ -589,8 +1076,13 @@ export const WhiteboardCanvas = forwardRef<
     },
     [
       activeTool,
+      connectorFrom,
+      boardId,
+      userId,
       handleCreateNote,
       handleCreateShape,
+      handleCreateText,
+      handleCreateFrame,
       handlePanStart,
       screenToBoard,
     ]
@@ -638,22 +1130,49 @@ export const WhiteboardCanvas = forwardRef<
           ids.add(shape.id);
         }
       }
+      for (const textEl of textElements) {
+        const tRight = textEl.x + textEl.width;
+        const tBottom = textEl.y + 30;
+        if (!(right < textEl.x || left > tRight || bottom < textEl.y || top > tBottom)) {
+          ids.add(textEl.id);
+        }
+      }
+      for (const frame of frames) {
+        const fRight = frame.x + frame.width;
+        const fBottom = frame.y + frame.height;
+        if (!(right < frame.x || left > fRight || bottom < frame.y || top > fBottom)) {
+          ids.add(frame.id);
+        }
+      }
       setSelectedIds(ids);
       setSelectionBox(null);
     }
     handlePanEnd();
-  }, [handlePanEnd, selectionBox, notes, shapes]);
+  }, [handlePanEnd, selectionBox, notes, shapes, textElements, frames]);
 
   const cursorStyle =
     activeTool === "hand"
       ? "grab"
-      : activeTool === "select"
+      : activeTool === "select" || activeTool === "connector" || activeTool === "text" || activeTool === "frame"
         ? "crosshair"
         : isShapeTool(activeTool)
           ? "crosshair"
           : "default";
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleStageTouchMove = useCallback(
+    (e: Konva.KonvaEventObject<TouchEvent>) => {
+      const touches = e.evt.touches;
+      if (touches.length === 2) {
+        handlePinch(
+          { x: touches[0].clientX, y: touches[0].clientY },
+          { x: touches[1].clientX, y: touches[1].clientY }
+        );
+      }
+    },
+    [handlePinch]
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -687,15 +1206,23 @@ export const WhiteboardCanvas = forwardRef<
         }
       }
       if (ctrl && e.key === "v") {
-        if (clipboardNotes.length > 0 || clipboardShapes.length > 0) {
+        if (clipboardNotes.length > 0 || clipboardShapes.length > 0 || clipboardTextElements.length > 0 || clipboardFrames.length > 0) {
           e.preventDefault();
           handlePaste();
         }
       }
+      if (ctrl && e.key === "z") {
+        e.preventDefault();
+        undoAction();
+      }
+      if (ctrl && (e.key === "y" || (e.shiftKey && e.key === "Z"))) {
+        e.preventDefault();
+        redoAction();
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds.size, clipboardNotes.length, clipboardShapes.length, handleDuplicate, handleCopy, handlePaste, handleDeleteSelection]);
+  }, [selectedIds.size, clipboardNotes.length, clipboardShapes.length, clipboardTextElements.length, clipboardFrames.length, handleDuplicate, handleCopy, handlePaste, handleDeleteSelection, undoAction, redoAction]);
 
   return (
     <div
@@ -706,15 +1233,52 @@ export const WhiteboardCanvas = forwardRef<
       aria-label="Whiteboard canvas"
     >
       <Stage
+        key={pixelRatio}
+        ref={stageRef}
         width={width}
         height={height}
+        pixelRatio={pixelRatio}
         onMouseDown={handleStageMouseDown}
         onMouseMove={handleMouseMoveWithCursor}
         onMouseUp={handleStageMouseUp}
         onMouseLeave={handleStageMouseUp}
         onWheel={handleWheel}
+        onTouchMove={handleStageTouchMove}
+        onTouchEnd={handlePinchEnd}
         style={{ cursor: cursorStyle }}
       >
+        {gridVisible && (
+          <GridLayer
+            width={width}
+            height={height}
+            stageX={stageX}
+            stageY={stageY}
+            scale={scale}
+          />
+        )}
+        <FramesLayer
+          boardId={boardId}
+          userId={userId}
+          frames={frames}
+          selectedIds={selectedIds}
+          onSelectFrame={handleSelectFrame}
+          onFrameUpdate={handleFrameUpdate}
+          onRequestEditTitle={(frameId, initialTitle) =>
+            setEditingFrameTitle({ frameId, initialTitle })
+          }
+          onFrameContextMenu={handleFrameContextMenu}
+          onDragStart={(elementId) =>
+            setDraggingState({ isDragging: true, elementId, x: 0, y: 0 })
+          }
+          onDragEnd={() =>
+            setDraggingState({ isDragging: false, elementId: null, x: 0, y: 0 })
+          }
+          snapEnabled={snapEnabled}
+          x={stageX}
+          y={stageY}
+          scaleX={scale}
+          scaleY={scale}
+        />
         <StickyNotesLayer
           boardId={boardId}
           userId={userId}
@@ -728,18 +1292,20 @@ export const WhiteboardCanvas = forwardRef<
           onDragStart={(elementId) =>
             setDraggingState({ isDragging: true, elementId, x: 0, y: 0 })
           }
-          onDragMove={(elementId, x, y) =>
-            setDraggingState((prev) => ({
-              ...prev,
-              isDragging: true,
-              elementId,
-              x,
-              y,
-            }))
-          }
+          onDragMove={(elementId, x, y) => {
+            setDraggingState((prev) => ({ ...prev, isDragging: true, elementId, x, y }));
+            setLocalNoteOverrides((prev) => {
+              const existing = prev.get(elementId) ?? notesRef.current.find((n) => n.id === elementId);
+              if (!existing) return prev;
+              const next = new Map(prev);
+              next.set(elementId, { ...existing, x, y });
+              return next;
+            });
+          }}
           onDragEnd={() =>
             setDraggingState({ isDragging: false, elementId: null, x: 0, y: 0 })
           }
+          snapEnabled={snapEnabled}
           x={stageX}
           y={stageY}
           scaleX={scale}
@@ -756,17 +1322,63 @@ export const WhiteboardCanvas = forwardRef<
           onDragStart={(elementId) =>
             setDraggingState({ isDragging: true, elementId, x: 0, y: 0 })
           }
-          onDragMove={(elementId, x, y) =>
-            setDraggingState((prev) => ({
-              ...prev,
-              isDragging: true,
-              elementId,
-              x,
-              y,
-            }))
-          }
+          onDragMove={(elementId, x, y) => {
+            setDraggingState((prev) => ({ ...prev, isDragging: true, elementId, x, y }));
+            setLocalShapeOverrides((prev) => {
+              const existing = prev.get(elementId) ?? shapesRef.current.find((s) => s.id === elementId);
+              if (!existing) return prev;
+              const next = new Map(prev);
+              next.set(elementId, { ...existing, x, y });
+              return next;
+            });
+          }}
           onDragEnd={() =>
             setDraggingState({ isDragging: false, elementId: null, x: 0, y: 0 })
+          }
+          snapEnabled={snapEnabled}
+          x={stageX}
+          y={stageY}
+          scaleX={scale}
+          scaleY={scale}
+        />
+        <TextElementsLayer
+          boardId={boardId}
+          userId={userId}
+          textElements={textElements}
+          selectedIds={selectedIds}
+          onSelectText={handleSelectText}
+          onTextUpdate={handleTextUpdate}
+          onRequestEditText={(id) => setEditingTextId(id)}
+          onTextContextMenu={handleTextContextMenu}
+          onDragStart={(elementId) =>
+            setDraggingState({ isDragging: true, elementId, x: 0, y: 0 })
+          }
+          onDragMove={(elementId, x, y) => {
+            setLocalTextOverrides((prev) => {
+              const existing =
+                prev.get(elementId) ??
+                textElementsRef.current.find((t) => t.id === elementId);
+              if (!existing) return prev;
+              const next = new Map(prev);
+              next.set(elementId, { ...existing, x, y });
+              return next;
+            });
+          }}
+          onDragEnd={() =>
+            setDraggingState({ isDragging: false, elementId: null, x: 0, y: 0 })
+          }
+          snapEnabled={snapEnabled}
+          x={stageX}
+          y={stageY}
+          scaleX={scale}
+          scaleY={scale}
+        />
+        <ConnectorsLayer
+          connectors={connectors}
+          notes={notes}
+          shapes={shapes}
+          onRequestEditLabel={(connectorId, boardMidX, boardMidY, label) =>
+            setEditingConnectorLabel({ connectorId, boardMidX, boardMidY, label })
           }
           x={stageX}
           y={stageY}
@@ -796,6 +1408,102 @@ export const WhiteboardCanvas = forwardRef<
           scaleY={scale}
         />
       </Stage>
+      <TextElementsOverlay
+        textElements={textElements}
+        selectedIds={selectedIds}
+        editingId={editingTextId}
+        stageX={stageX}
+        stageY={stageY}
+        scale={scale}
+        onEditCommit={(id, newText, newWidth) => {
+          const te = textElements.find((t) => t.id === id);
+          if (te) {
+            const updated = {
+              ...te,
+              text: newText,
+              ...(newWidth != null ? { width: newWidth } : {}),
+              updatedAt: Date.now(),
+            };
+            handleTextUpdate(updated);
+            persistTextElement(boardId, updated).catch((err) =>
+              console.error("Failed to persist text:", err)
+            );
+          }
+          setEditingTextId(null);
+        }}
+        onEditCancel={() => setEditingTextId(null)}
+      />
+      {/* Frame title inline editor — overlaid exactly on the title area */}
+      {editingFrameTitle && (() => {
+        const FRAME_PADDING = 8;
+        const FRAME_TITLE_H = 28;
+        const frame = frames.find((f) => f.id === editingFrameTitle.frameId);
+        if (!frame) return null;
+        const ex = stageX + (frame.x + FRAME_PADDING) * scale;
+        const ey = stageY + (frame.y + FRAME_PADDING / 2) * scale;
+        const ew = Math.max(60, (frame.width - FRAME_PADDING * 2) * scale);
+        const eh = Math.max(18, (FRAME_TITLE_H - FRAME_PADDING) * scale);
+        return (
+          <FrameTitleEditorOverlay
+            key={editingFrameTitle.frameId}
+            x={ex} y={ey} width={ew} height={eh}
+            fontSize={Math.max(10, 14 * scale)}
+            initialTitle={editingFrameTitle.initialTitle}
+            onCommit={(title) => {
+              handleFrameUpdate({ ...frame, title, updatedAt: Date.now() });
+              persistFrame(boardId, { ...frame, title, updatedAt: Date.now() }).catch(console.error);
+              setEditingFrameTitle(null);
+            }}
+            onCancel={() => setEditingFrameTitle(null)}
+          />
+        );
+      })()}
+      {/* Zoom controls */}
+      <ZoomControls
+        scale={scale}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onReset={resetView}
+        onFitToScreen={() => fitToContent(getContentBBox(notes, shapes, textElements, frames))}
+      />
+      {/* Text format bar — shown when a text element is selected */}
+      {(() => {
+        const selId = selectedIds.size === 1 ? [...selectedIds][0] : null;
+        const selectedText = selId ? textElements.find((t) => t.id === selId) : null;
+        if (!selectedText) return null;
+        const screenX = stageX + (selectedText.x + selectedText.width / 2) * scale;
+        const screenY = stageY + selectedText.y * scale;
+        return (
+          <TextFormatBar
+            textElement={selectedText}
+            x={screenX}
+            y={screenY}
+            onUpdate={(updates) => {
+              const updated = { ...selectedText, ...updates, updatedAt: Date.now() };
+              handleTextUpdate(updated);
+              persistTextElement(boardId, updated).catch(console.error);
+            }}
+          />
+        );
+      })()}
+      {/* Connector label inline editor — overlaid exactly on the connector midpoint */}
+      {editingConnectorLabel && (() => {
+        const sx = stageX + editingConnectorLabel.boardMidX * scale;
+        const sy = stageY + editingConnectorLabel.boardMidY * scale;
+        return (
+          <ConnectorLabelEditor
+            key={editingConnectorLabel.connectorId}
+            screenX={sx} screenY={sy}
+            initialLabel={editingConnectorLabel.label}
+            onCommit={(label) => {
+              const conn = connectors.find((c) => c.id === editingConnectorLabel.connectorId);
+              if (conn) persistConnector(boardId, { ...conn, label, updatedAt: Date.now() }).catch(console.error);
+              setEditingConnectorLabel(null);
+            }}
+            onCancel={() => setEditingConnectorLabel(null)}
+          />
+        );
+      })()}
       {contextMenu &&
         createPortal(
           <ColorPaletteMenu
@@ -807,11 +1515,335 @@ export const WhiteboardCanvas = forwardRef<
             forShape={contextMenu.type === "shape"}
             onDuplicate={selectedIds.size > 0 ? handleDuplicate : undefined}
             onCopy={selectedIds.size > 0 ? handleCopy : undefined}
-            onPaste={clipboardNotes.length > 0 || clipboardShapes.length > 0 ? handlePaste : undefined}
-            pasteEnabled={clipboardNotes.length > 0 || clipboardShapes.length > 0}
+            onPaste={clipboardNotes.length > 0 || clipboardShapes.length > 0 || clipboardTextElements.length > 0 || clipboardFrames.length > 0 ? handlePaste : undefined}
+            pasteEnabled={clipboardNotes.length > 0 || clipboardShapes.length > 0 || clipboardTextElements.length > 0 || clipboardFrames.length > 0}
           />,
           document.body
         )}
     </div>
   );
 });
+
+// ─── Frame title inline editor ────────────────────────────────────────────────
+
+interface FrameTitleEditorOverlayProps {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  initialTitle: string;
+  onCommit: (title: string) => void;
+  onCancel: () => void;
+}
+
+function FrameTitleEditorOverlay({
+  x, y, width, height, fontSize, initialTitle, onCommit, onCancel,
+}: FrameTitleEditorOverlayProps) {
+  const [value, setValue] = useState(initialTitle);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") { e.preventDefault(); onCommit(value); }
+      if (e.key === "Escape") onCancel();
+    },
+    [value, onCommit, onCancel]
+  );
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onCommit(value)}
+      onKeyDown={handleKeyDown}
+      onMouseDown={(e) => e.stopPropagation()}
+      placeholder="Frame title…"
+      style={{
+        position: "absolute",
+        left: x,
+        top: y,
+        width,
+        height,
+        fontSize,
+        fontFamily: "sans-serif",
+        color: "#5d4037",
+        padding: "2px 4px",
+        border: "2px solid #ff8f00",
+        borderRadius: 4,
+        outline: "none",
+        background: "white",
+        boxSizing: "border-box",
+        zIndex: 10000,
+        pointerEvents: "auto",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}
+    />
+  );
+}
+
+// ─── HTML overlay for text elements (view + edit) ───────────────────────────
+
+interface TextElementsOverlayProps {
+  textElements: TextElement[];
+  selectedIds: Set<string>;
+  editingId: string | null;
+  stageX: number;
+  stageY: number;
+  scale: number;
+  onEditCommit: (id: string, text: string, width?: number) => void;
+  onEditCancel: () => void;
+}
+
+function TextElementsOverlay({
+  textElements,
+  selectedIds,
+  editingId,
+  stageX,
+  stageY,
+  scale,
+  onEditCommit,
+  onEditCancel,
+}: TextElementsOverlayProps) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        overflow: "hidden",
+      }}
+    >
+      {textElements.map((te) => {
+        const x = stageX + te.x * scale;
+        const y = stageY + te.y * scale;
+        const w = Math.max(80, te.width * scale);
+        const scaledFontSize = te.fontSize * scale;
+        const isEditing = editingId === te.id;
+        const isSelected = selectedIds.has(te.id);
+
+        if (isEditing) {
+          return (
+            <EditableTextArea
+              key={te.id}
+              textElement={te}
+              x={x}
+              y={y}
+              initialWidth={w}
+              scaledFontSize={scaledFontSize}
+              scale={scale}
+              onCommit={(text, width) => onEditCommit(te.id, text, width)}
+              onCancel={onEditCancel}
+            />
+          );
+        }
+
+        return (
+          <div
+            key={te.id}
+            style={{
+              position: "absolute",
+              left: x,
+              top: y,
+              width: w,
+              fontSize: scaledFontSize,
+              fontFamily: te.fontFamily,
+              color: te.text ? te.fill : "#9ca3af",
+              padding: 4 * scale,
+              border: isSelected ? "2px solid #ff8f00" : "2px solid transparent",
+              borderRadius: 4,
+              boxSizing: "border-box",
+              pointerEvents: "none",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              lineHeight: 1.4,
+              userSelect: "none",
+            }}
+          >
+            {te.text || "Double-click to edit"}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface EditableTextAreaProps {
+  textElement: TextElement;
+  x: number;
+  y: number;
+  initialWidth: number;
+  scaledFontSize: number;
+  scale: number;
+  onCommit: (text: string, width?: number) => void;
+  onCancel: () => void;
+}
+
+function EditableTextArea({
+  textElement,
+  x,
+  y,
+  initialWidth,
+  scaledFontSize,
+  scale,
+  onCommit,
+  onCancel,
+}: EditableTextAreaProps) {
+  const [value, setValue] = useState(textElement.text);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+    if (textElement.text) ref.current?.select();
+  }, [textElement.text]);
+
+  const commit = useCallback(() => {
+    const el = ref.current;
+    const newWidth = el ? Math.round(el.offsetWidth / scale) : undefined;
+    onCommit(value, newWidth);
+  }, [value, scale, onCommit]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        commit();
+      }
+      if (e.key === "Escape") onCancel();
+    },
+    [commit, onCancel]
+  );
+
+  // Auto-grow height as user types
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setValue(e.target.value);
+    const el = e.target;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={handleChange}
+      onBlur={commit}
+      onKeyDown={handleKeyDown}
+      style={{
+        position: "absolute",
+        left: x,
+        top: y,
+        width: initialWidth,
+        minHeight: Math.max(40, scaledFontSize * 2),
+        fontSize: scaledFontSize,
+        fontFamily: textElement.fontFamily,
+        color: textElement.fill,
+        padding: 4 * scale,
+        border: "2px solid #ff8f00",
+        borderRadius: 4,
+        outline: "none",
+        resize: "both",
+        background: "transparent",
+        boxSizing: "border-box",
+        pointerEvents: "auto",
+        lineHeight: 1.4,
+        overflow: "hidden",
+      }}
+    />
+  );
+}
+
+// ─── Connector label inline editor ───────────────────────────────────────────
+
+interface ConnectorLabelEditorProps {
+  screenX: number;
+  screenY: number;
+  initialLabel: string;
+  onCommit: (label: string) => void;
+  onCancel: () => void;
+}
+
+function ConnectorLabelEditor({ screenX, screenY, initialLabel, onCommit, onCancel }: ConnectorLabelEditorProps) {
+  const [value, setValue] = useState(initialLabel);
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); onCommit(value); }
+    if (e.key === "Escape") onCancel();
+  };
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onCommit(value)}
+      onKeyDown={handleKeyDown}
+      onMouseDown={(e) => e.stopPropagation()}
+      placeholder="Label…"
+      style={{
+        position: "absolute",
+        left: screenX - 60,
+        top: screenY - 14,
+        width: 120,
+        fontSize: 12,
+        fontFamily: "sans-serif",
+        color: "#1f2937",
+        padding: "2px 6px",
+        border: "2px solid #ff8f00",
+        borderRadius: 4,
+        outline: "none",
+        background: "white",
+        boxSizing: "border-box",
+        zIndex: 10002,
+        textAlign: "center",
+        pointerEvents: "auto",
+      }}
+    />
+  );
+}
+
+// ─── Content bounding-box helper ─────────────────────────────────────────────
+
+/**
+ * Returns the axis-aligned bounding box that contains every element on the
+ * board, or null when the board is empty.
+ */
+function getContentBBox(
+  notes: StickyNoteElement[],
+  shapes: ShapeElement[],
+  textElements: TextElement[],
+  frames: FrameElement[]
+): { x: number; y: number; width: number; height: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  const expand = (x: number, y: number, w: number, h: number) => {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+  };
+
+  for (const n of notes)        expand(n.x, n.y, n.width, n.height);
+  for (const s of shapes)       expand(s.x, s.y, s.width, s.height);
+  for (const t of textElements)  expand(t.x, t.y, t.width, t.fontSize * 2);
+  for (const f of frames)       expand(f.x, f.y, f.width, f.height);
+
+  if (!isFinite(minX)) return null;
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}

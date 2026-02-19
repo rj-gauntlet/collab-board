@@ -26,6 +26,8 @@ export default function BoardPage() {
   const [activeTool, setActiveTool] = useState<Tool>("hand");
   const [selectedCount, setSelectedCount] = useState(0);
   const [perfMonitorVisible, setPerfMonitorVisible] = useState(false);
+  const [gridVisible, setGridVisible] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(false);
   const [nameEditing, setNameEditing] = useState(false);
   const [nameEditValue, setNameEditValue] = useState("");
   const canvasRef = useRef<WhiteboardCanvasHandle>(null);
@@ -35,25 +37,56 @@ export default function BoardPage() {
       ? { width: window.innerWidth, height: window.innerHeight }
       : { width: 800, height: 500 }
   );
+  // Track the device pixel ratio so the Konva Stage can re-render its canvas
+  // buffer at the correct resolution after a browser-zoom change.
+  const [pixelRatio, setPixelRatio] = useState(() =>
+    typeof window !== "undefined" ? window.devicePixelRatio : 1
+  );
 
   useEffect(() => {
     const el = canvasContainerRef.current;
     if (!el) return;
 
-    const updateSize = () => {
-      const width = el.clientWidth || window.innerWidth;
-      const height = el.clientHeight || window.innerHeight;
-      setCanvasSize((prev) => {
-        const w = Math.floor(width);
-        const h = Math.floor(height);
-        return prev.width === w && prev.height === h ? prev : { width: w, height: h };
-      });
+    const applySize = (w: number, h: number) => {
+      // Ceil instead of floor: a canvas 1 CSS-pixel too large is invisible;
+      // a canvas 1 CSS-pixel too small leaves an unrendered sliver.
+      const cw = Math.ceil(w);
+      const ch = Math.ceil(h);
+      setCanvasSize((prev) =>
+        prev.width === cw && prev.height === ch ? prev : { width: cw, height: ch }
+      );
+      // Also refresh the pixel ratio (changes when browser zoom changes).
+      setPixelRatio(window.devicePixelRatio);
     };
 
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
+    // Primary: ResizeObserver on the container — fires on any layout change.
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      applySize(entry.contentRect.width, entry.contentRect.height);
+    });
     observer.observe(el);
-    return () => observer.disconnect();
+
+    // Secondary: visualViewport resize fires AFTER the browser has finished
+    // re-laying-out following a zoom change, giving accurate dimensions where
+    // the ResizeObserver callback might still see stale values.
+    const onVVResize = () => {
+      const rect = el.getBoundingClientRect();
+      applySize(rect.width, rect.height);
+    };
+    window.visualViewport?.addEventListener("resize", onVVResize);
+    // Tertiary: plain window resize as a catch-all.
+    window.addEventListener("resize", onVVResize);
+
+    // Initial measurement.
+    const rect = el.getBoundingClientRect();
+    applySize(rect.width, rect.height);
+
+    return () => {
+      observer.disconnect();
+      window.visualViewport?.removeEventListener("resize", onVVResize);
+      window.removeEventListener("resize", onVVResize);
+    };
   }, []);
 
   const displayName =
@@ -292,6 +325,55 @@ export default function BoardPage() {
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* Undo */}
+            <button
+              type="button"
+              onClick={() => canvasRef.current?.undo()}
+              className="font-sans rounded-md px-3 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
+              title="Undo (Ctrl+Z)"
+            >
+              ↩ Undo
+            </button>
+            {/* Redo */}
+            <button
+              type="button"
+              onClick={() => canvasRef.current?.redo()}
+              className="font-sans rounded-md px-3 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
+              title="Redo (Ctrl+Y)"
+            >
+              ↪ Redo
+            </button>
+            {/* Export */}
+            <button
+              type="button"
+              onClick={() => canvasRef.current?.exportImage()}
+              className="font-sans rounded-md px-3 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
+              title="Export as PNG"
+            >
+              ⬇ Export
+            </button>
+            {/* Grid toggle */}
+            <button
+              type="button"
+              onClick={() => setGridVisible((v) => !v)}
+              className={`font-sans rounded-md px-3 py-1.5 text-sm transition ${
+                gridVisible ? "bg-white/30 text-white" : "text-white/90 hover:bg-white/20 hover:text-white"
+              }`}
+              title="Toggle grid"
+            >
+              Grid
+            </button>
+            {/* Snap toggle */}
+            <button
+              type="button"
+              onClick={() => setSnapEnabled((v) => !v)}
+              className={`font-sans rounded-md px-3 py-1.5 text-sm transition ${
+                snapEnabled ? "bg-white/30 text-white" : "text-white/90 hover:bg-white/20 hover:text-white"
+              }`}
+              title="Snap to grid"
+            >
+              Snap
+            </button>
             <button
               type="button"
               onClick={handleCreateBoard}
@@ -328,7 +410,7 @@ export default function BoardPage() {
             />
           </div>
         </div>
-        <div className="h-full w-full">
+        <div className="absolute inset-0">
           <WhiteboardErrorBoundary>
             <WhiteboardCanvas
               ref={canvasRef}
@@ -337,7 +419,10 @@ export default function BoardPage() {
               displayName={displayName}
               width={canvasSize.width}
               height={canvasSize.height}
+              pixelRatio={pixelRatio}
               activeTool={activeTool}
+              gridVisible={gridVisible}
+              snapEnabled={snapEnabled}
               onSelectionChange={setSelectedCount}
             />
           </WhiteboardErrorBoundary>

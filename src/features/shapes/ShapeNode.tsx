@@ -56,6 +56,11 @@ export function ShapeNode({
     }
   }, [isSelected, isMultiSelectMode, shape.id, onRegisterSelectRef]);
 
+  useEffect(() => {
+    const node = groupRef.current;
+    if (node) node.setAttr("data-elementId", shape.id);
+  }, [shape.id]);
+
   const displayX = remoteX ?? shape.x;
   const displayY = remoteY ?? shape.y;
   const rotation = shape.rotation ?? 0;

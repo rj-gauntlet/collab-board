@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Group, Rect, Text } from "react-konva";
 import Konva from "konva";
 import type { StickyNoteElement } from "./types";
@@ -65,6 +65,11 @@ export function StickyNote({
     },
     [onContextMenu]
   );
+
+  useEffect(() => {
+    const node = groupRef.current;
+    if (node) node.setAttr("data-elementId", note.id);
+  }, [note.id]);
 
   return (
     <>

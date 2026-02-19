@@ -1,5 +1,19 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Whiteboard – Standalone text
+
+**Create a text box**
+
+1. Select the **Text** tool in the toolbar (or use the keyboard shortcut if set).
+2. **Click once** on an empty area of the canvas where you want the text.
+3. A placeholder box appears with “Double-click to edit”.
+
+**Edit the text**
+
+- **Option A:** **Click the placeholder once** (it gets an orange border), then **click it again** to open the editor.
+- **Option B:** **Double-click the placeholder** to open the editor.
+4. Type in the overlay; use **Enter** (without Shift) or **click outside** to save. Use **Escape** to cancel without saving.
+
 ## Getting Started
 
 First, run the development server:
