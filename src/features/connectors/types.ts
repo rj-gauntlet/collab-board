@@ -16,6 +16,12 @@ export interface ConnectorElement {
   style: ConnectorStyle;
   stroke?: string;
   strokeWidth?: number;
+  /** Render the line as a dashed stroke. */
+  dashed?: boolean;
+  /** Render the line with a smooth curve (quadratic bezier via perpendicular midpoint). */
+  curved?: boolean;
+  /** Show arrowheads on both ends. */
+  bidirectional?: boolean;
   label?: string;
   createdBy: string;
   createdAt: number;
@@ -31,6 +37,9 @@ export interface ConnectorDoc {
   style: ConnectorStyle;
   stroke?: string;
   strokeWidth?: number;
+  dashed?: boolean;
+  curved?: boolean;
+  bidirectional?: boolean;
   label?: string;
   createdBy: string;
   createdAt: number;

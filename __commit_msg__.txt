@@ -1,12 +1,16 @@
-fix: connectors now follow dragged elements in real-time
+feat: connector styles, keyboard shortcuts modal, updated docs
 
-Root cause: useRemoteNotes returns all notes (including the current user's)
-from Firebase RTDB. The noteMap/shapeMap merge used `updatedAt >=` which
-always let remote snapshots overwrite local drag overrides (equal timestamps),
-so ConnectorsLayer always read the pre-drag position from the database.
+Connector styles:
+- Added dashed, curved, bidirectional fields to ConnectorElement type and Firestore persistence
+- ConnectorsLayer: dashed lines (Konva dash), curved lines (quadratic bezier via perpendicular control point), bidirectional arrowheads, click-to-select with amber glow highlight, invisible wide hit area for easier clicking
+- ConnectorStyleBar: floating toolbar (line/arrow, dashed, curved, bidirectional, stroke width, color, delete) shown at top-center when connector selected
+- Delete key removes selected connector; Escape deselects
 
-Fixes:
-- Skip remote note/shape override when a local drag override exists for that ID
-- Guard all four local-override cleanup effects (notes, shapes, text, frames)
-  against clearing overrides for the element currently being dragged, using
-  a draggingElementIdRef kept in sync via useLayoutEffect
+Keyboard shortcuts modal:
+- KeyboardShortcutsModal component with all shortcuts grouped by section
+- Press ? anywhere to open/close; Escape closes
+- showShortcuts() exposed via WhiteboardCanvasHandle
+
+Docs:
+- PRD.md fully rewritten with complete feature spec, file structure, sync architecture, known patterns
+- CURRENT_STATUS.md fully rewritten with completed features, uncommitted changes, pending work, and key architectural notes for context on new machine

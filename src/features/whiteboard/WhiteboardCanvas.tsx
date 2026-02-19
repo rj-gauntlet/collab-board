@@ -37,6 +37,7 @@ import {
   usePersistedConnectors,
   createDefaultConnector,
   persistConnector,
+  deleteConnector,
 } from "@/features/connectors";
 import {
   TextElementsLayer,
@@ -59,6 +60,8 @@ import {
 } from "@/components/ColorPaletteMenu";
 import { ZoomControls } from "@/components/ZoomControls";
 import { TextFormatBar } from "@/components/TextFormatBar";
+import { ConnectorStyleBar } from "@/components/ConnectorStyleBar";
+import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { GridLayer } from "./GridLayer";
 import { exportBoardAsPng } from "./exportBoard";
 import { snapPos, GRID_SIZE } from "./snapGrid";
@@ -80,6 +83,7 @@ export interface WhiteboardCanvasHandle {
   exportImage: () => void;
   undo: () => void;
   redo: () => void;
+  showShortcuts: () => void;
 }
 
 const SHAPE_TOOLS = ["rect", "triangle", "circle"] as const;
@@ -237,6 +241,7 @@ export const WhiteboardCanvas = forwardRef<
     boardMidY: number;
     label: string;
   } | null>(null);
+  const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
 
   const {
     scale,
@@ -978,6 +983,7 @@ export const WhiteboardCanvas = forwardRef<
       },
       undo: undoAction,
       redo: redoAction,
+      showShortcuts: () => setShowShortcuts(true),
     }),
     [createNotesFromAI, clearCanvas, handleDeleteSelection, undoAction, redoAction]
   );
@@ -1030,6 +1036,7 @@ export const WhiteboardCanvas = forwardRef<
 
       if (clickOnEmpty && pos) {
         const { x, y } = screenToBoard(pos.x, pos.y);
+        setSelectedConnectorId(null);
         if (activeTool === "select") {
           setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
           setSelectedIds(new Set());
@@ -1197,12 +1204,26 @@ export const WhiteboardCanvas = forwardRef<
     return () => el.removeEventListener("wheel", preventScroll);
   }, []);
 
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const inInput = target?.closest("input, textarea, [contenteditable=true]");
       if (inInput) return;
+
+      // Shortcuts modal
+      if (e.key === "?") { e.preventDefault(); setShowShortcuts((v) => !v); return; }
+      if (e.key === "Escape") { setShowShortcuts(false); setSelectedConnectorId(null); return; }
+
       if (e.key === "Delete" || e.key === "Backspace") {
+        // Delete selected connector
+        if (selectedConnectorId) {
+          e.preventDefault();
+          deleteConnector(boardId, selectedConnectorId).catch(console.error);
+          setSelectedConnectorId(null);
+          return;
+        }
         if (selectedIds.size > 0) {
           e.preventDefault();
           handleDeleteSelection();
@@ -1237,7 +1258,7 @@ export const WhiteboardCanvas = forwardRef<
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds.size, clipboardNotes.length, clipboardShapes.length, clipboardTextElements.length, clipboardFrames.length, handleDuplicate, handleCopy, handlePaste, handleDeleteSelection, undoAction, redoAction]);
+  }, [selectedIds.size, selectedConnectorId, boardId, clipboardNotes.length, clipboardShapes.length, clipboardTextElements.length, clipboardFrames.length, handleDuplicate, handleCopy, handlePaste, handleDeleteSelection, undoAction, redoAction]);
 
   return (
     <div
@@ -1396,6 +1417,8 @@ export const WhiteboardCanvas = forwardRef<
             setEditingConnectorLabel({ connectorId, boardMidX, boardMidY, label })
           }
           editingConnectorId={editingConnectorLabel?.connectorId}
+          selectedConnectorId={selectedConnectorId ?? undefined}
+          onSelectConnector={(id) => { setSelectedConnectorId(id); setSelectedIds(new Set()); }}
           x={stageX}
           y={stageY}
           scaleX={scale}
@@ -1502,6 +1525,35 @@ export const WhiteboardCanvas = forwardRef<
           />
         );
       })()}
+      {/* Connector style toolbar — shown when a connector is selected */}
+      {selectedConnectorId && (() => {
+        const conn = connectors.find((c) => c.id === selectedConnectorId);
+        if (!conn) return null;
+        return (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 10003,
+              pointerEvents: "auto",
+            }}
+          >
+            <ConnectorStyleBar
+              connector={conn}
+              onUpdate={(updates) => {
+                const updated = { ...conn, ...updates, updatedAt: Date.now() };
+                persistConnector(boardId, updated).catch(console.error);
+              }}
+              onDelete={() => {
+                deleteConnector(boardId, selectedConnectorId).catch(console.error);
+                setSelectedConnectorId(null);
+              }}
+            />
+          </div>
+        );
+      })()}
       {/* Connector label inline editor — overlaid exactly on the connector midpoint */}
       {editingConnectorLabel && (() => {
         const sx = stageX + editingConnectorLabel.boardMidX * scale;
@@ -1536,6 +1588,10 @@ export const WhiteboardCanvas = forwardRef<
           />,
           document.body
         )}
+      {/* Keyboard shortcuts modal */}
+      {showShortcuts && (
+        <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />
+      )}
     </div>
   );
 });
