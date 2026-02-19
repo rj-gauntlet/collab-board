@@ -11,6 +11,8 @@ const FONT_SIZE = 14;
 interface StickyNoteProps {
   note: StickyNoteElement;
   isEditing: boolean;
+  isSelected?: boolean;
+  onSelect?: (shiftKey: boolean) => void;
   onEditStart: () => void;
   onEditEnd: (text: string) => void;
   onDragStart: () => void;
@@ -22,6 +24,8 @@ interface StickyNoteProps {
 export function StickyNote({
   note,
   isEditing,
+  isSelected = false,
+  onSelect,
   onEditStart,
   onEditEnd,
   onDragStart,
@@ -72,6 +76,8 @@ export function StickyNote({
         width={note.width}
         height={note.height}
         draggable={!isEditing}
+        onClick={onSelect ? (e) => onSelect(e.evt.shiftKey) : undefined}
+        onTap={onSelect ? (e) => onSelect(e.evt.shiftKey) : undefined}
         onDragStart={onDragStart}
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
@@ -86,8 +92,8 @@ export function StickyNote({
           width={note.width}
           height={note.height}
           fill={note.color}
-          stroke="#d4d4d8"
-          strokeWidth={1}
+          stroke={isSelected ? "#ff8f00" : "#d4d4d8"}
+          strokeWidth={isSelected ? 2 : 1}
           shadowColor="rgba(0,0,0,0.2)"
           shadowBlur={4}
           shadowOffsetY={2}

@@ -16,6 +16,8 @@ interface StickyNotesLayerProps {
   notes: StickyNoteElement[];
   editingNoteId: string | null;
   onEditingNoteIdChange: (id: string | null) => void;
+  selectedIds: Set<string>;
+  onSelectNote: (id: string, addToSelection: boolean) => void;
   onNoteUpdate: (note: StickyNoteElement) => void;
   onNoteContextMenu?: (note: StickyNoteElement, evt: MouseEvent) => void;
   onDragStart: (elementId: string) => void;
@@ -33,6 +35,8 @@ export function StickyNotesLayer({
   notes,
   editingNoteId,
   onEditingNoteIdChange,
+  selectedIds,
+  onSelectNote,
   onNoteUpdate,
   onNoteContextMenu,
   onDragStart,
@@ -135,6 +139,8 @@ export function StickyNotesLayer({
             key={note.id}
             note={note}
             isEditing={editingNoteId === note.id}
+            isSelected={selectedIds.has(note.id)}
+            onSelect={(shiftKey) => onSelectNote(note.id, shiftKey)}
             onEditStart={() => onEditingNoteIdChange(note.id)}
             onEditEnd={(text) => handleEditEnd(note, text)}
             onContextMenu={(evt) => onNoteContextMenu?.(note, evt)}

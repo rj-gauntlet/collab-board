@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import Konva from "konva";
-import { Stage, Layer } from "react-konva";
+import { Stage, Layer, Rect } from "react-konva";
 import { useSyncCursor } from "@/features/cursors/useSyncCursor";
 import { RemoteCursors } from "@/features/cursors/RemoteCursors";
 import { clearBoard } from "./clearBoard";
@@ -46,6 +46,7 @@ export interface WhiteboardCanvasHandle {
     notes: Array<{ text: string; color: string; x: number; y: number }>
   ) => void;
   clearCanvas: () => Promise<void>;
+  deleteSelection: () => void;
 }
 
 const SHAPE_TOOLS = ["rect", "triangle", "circle"] as const;
@@ -60,6 +61,7 @@ interface WhiteboardCanvasProps {
   width: number;
   height: number;
   activeTool: Tool;
+  onSelectionChange?: (selectedCount: number) => void;
 }
 
 function isClickOnStickyNote(target: Konva.Node | null): boolean {
@@ -93,7 +95,7 @@ export const WhiteboardCanvas = forwardRef<
   WhiteboardCanvasHandle,
   WhiteboardCanvasProps
 >(function WhiteboardCanvas(
-  { boardId, userId, displayName, width, height, activeTool },
+  { boardId, userId, displayName, width, height, activeTool, onSelectionChange },
   ref
 ) {
   const [optimisticNotes, setOptimisticNotes] = useState<StickyNoteElement[]>([]);
@@ -101,7 +103,13 @@ export const WhiteboardCanvas = forwardRef<
     Map<string, StickyNoteElement>
   >(new Map());
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectionBox, setSelectionBox] = useState<{
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  } | null>(null);
   const [optimisticShapes, setOptimisticShapes] = useState<
     import("@/features/shapes").ShapeElement[]
   >([]);
@@ -119,6 +127,9 @@ export const WhiteboardCanvas = forwardRef<
     | { type: "note"; note: StickyNoteElement; clientX: number; clientY: number }
     | { type: "shape"; shape: ShapeElement; clientX: number; clientY: number };
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+
+  const [clipboardNotes, setClipboardNotes] = useState<StickyNoteElement[]>([]);
+  const [clipboardShapes, setClipboardShapes] = useState<ShapeElement[]>([]);
 
   const {
     scale,
@@ -208,35 +219,53 @@ export const WhiteboardCanvas = forwardRef<
     []
   );
 
+  const deleteByIds = useCallback((ids: Set<string>) => {
+    for (const id of ids) {
+      const asNote = notesRef.current.some((n) => n.id === id);
+      if (asNote) {
+        deleteNote(boardId, id).catch((err) =>
+          console.error("Failed to delete note:", err)
+        );
+        setOptimisticNotes((prev) => prev.filter((n) => n.id !== id));
+        setLocalNoteOverrides((prev) => {
+          const next = new Map(prev);
+          next.delete(id);
+          return next;
+        });
+        setEditingNoteId((eid) => (eid === id ? null : eid));
+      } else {
+        deleteShape(boardId, id).catch((err) =>
+          console.error("Failed to delete shape:", err)
+        );
+        setOptimisticShapes((prev) => prev.filter((s) => s.id !== id));
+        setLocalShapeOverrides((prev) => {
+          const next = new Map(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, [boardId]);
+
   const handleDelete = useCallback(() => {
     if (!contextMenu) return;
-    if (contextMenu.type === "note") {
-      deleteNote(boardId, contextMenu.note.id).catch((err) =>
-        console.error("Failed to delete note:", err)
-      );
-      setOptimisticNotes((prev) => prev.filter((n) => n.id !== contextMenu.note.id));
-      setLocalNoteOverrides((prev) => {
-        const next = new Map(prev);
-        next.delete(contextMenu.note.id);
-        return next;
-      });
-      setEditingNoteId((id) => (id === contextMenu.note.id ? null : id));
-    } else {
-      deleteShape(boardId, contextMenu.shape.id).catch((err) =>
-        console.error("Failed to delete shape:", err)
-      );
-      setOptimisticShapes((prev) =>
-        prev.filter((s) => s.id !== contextMenu.shape.id)
-      );
-      setLocalShapeOverrides((prev) => {
-        const next = new Map(prev);
-        next.delete(contextMenu.shape.id);
-        return next;
-      });
-      setSelectedShapeId((id) => (id === contextMenu.shape.id ? null : id));
-    }
+    const contextItemId = contextMenu.type === "note" ? contextMenu.note.id : contextMenu.shape.id;
+    const deleteIds = selectedIds.has(contextItemId)
+      ? new Set(selectedIds)
+      : new Set<string>([contextItemId]);
+    deleteByIds(deleteIds);
     setContextMenu(null);
-  }, [contextMenu, boardId]);
+  }, [contextMenu, selectedIds, deleteByIds]);
+
+  const handleDeleteSelection = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    deleteByIds(new Set(selectedIds));
+  }, [selectedIds, deleteByIds]);
 
   const handleColorSelect = useCallback(
     (color: string) => {
@@ -296,6 +325,7 @@ export const WhiteboardCanvas = forwardRef<
   );
 
   const notesRef = useRef<StickyNoteElement[]>([]);
+  const shapesRef = useRef<ShapeElement[]>([]);
 
   const persistedNoteIds = new Set(persistedNotes.map((n) => n.id));
   useEffect(() => {
@@ -369,6 +399,117 @@ export const WhiteboardCanvas = forwardRef<
   const shapes = Array.from(shapeMap.values()).sort(
     (a, b) => a.createdAt - b.createdAt
   );
+  shapesRef.current = shapes;
+
+  function nextId(): string {
+    return typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  const handleDuplicate = useCallback(() => {
+    const notes = notesRef.current;
+    const shapesList = shapesRef.current;
+    const offset = 20;
+    const newNoteIds: string[] = [];
+    const newShapeIds: string[] = [];
+    for (const id of selectedIds) {
+      const note = notes.find((n) => n.id === id);
+      if (note) {
+        const clone: StickyNoteElement = {
+          ...note,
+          id: nextId(),
+          x: note.x + offset,
+          y: note.y + offset,
+          createdBy: userId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        setOptimisticNotes((prev) => [...prev, clone]);
+        persistNote(boardId, clone).catch((err) => {
+          console.error("Failed to duplicate note:", err);
+          setOptimisticNotes((prev) => prev.filter((n) => n.id !== clone.id));
+        });
+        newNoteIds.push(clone.id);
+        continue;
+      }
+      const shape = shapesList.find((s) => s.id === id);
+      if (shape) {
+        const clone: ShapeElement = {
+          ...shape,
+          id: nextId(),
+          x: shape.x + offset,
+          y: shape.y + offset,
+          createdBy: userId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        setOptimisticShapes((prev) => [...prev, clone]);
+        persistShape(boardId, clone).catch((err) => {
+          console.error("Failed to duplicate shape:", err);
+          setOptimisticShapes((prev) => prev.filter((s) => s.id !== clone.id));
+        });
+        newShapeIds.push(clone.id);
+      }
+    }
+    setSelectedIds(new Set([...newNoteIds, ...newShapeIds]));
+    setContextMenu(null);
+  }, [boardId, userId, selectedIds]);
+
+  const handleCopy = useCallback(() => {
+    const notes = notesRef.current;
+    const shapesList = shapesRef.current;
+    const copiedNotes = notes.filter((n) => selectedIds.has(n.id));
+    const copiedShapes = shapesList.filter((s) => selectedIds.has(s.id));
+    setClipboardNotes(copiedNotes);
+    setClipboardShapes(copiedShapes);
+    setContextMenu(null);
+  }, [selectedIds]);
+
+  const handlePaste = useCallback(() => {
+    const offset = 40;
+    const newIds: string[] = [];
+    for (const note of clipboardNotes) {
+      const clone: StickyNoteElement = {
+        ...note,
+        id: nextId(),
+        x: note.x + offset,
+        y: note.y + offset,
+        createdBy: userId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      setOptimisticNotes((prev) => [...prev, clone]);
+      persistNote(boardId, clone).catch((err) => {
+        console.error("Failed to paste note:", err);
+        setOptimisticNotes((prev) => prev.filter((n) => n.id !== clone.id));
+      });
+      newIds.push(clone.id);
+    }
+    for (const shape of clipboardShapes) {
+      const clone: ShapeElement = {
+        ...shape,
+        id: nextId(),
+        x: shape.x + offset,
+        y: shape.y + offset,
+        createdBy: userId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      setOptimisticShapes((prev) => [...prev, clone]);
+      persistShape(boardId, clone).catch((err) => {
+        console.error("Failed to paste shape:", err);
+        setOptimisticShapes((prev) => prev.filter((s) => s.id !== clone.id));
+      });
+      newIds.push(clone.id);
+    }
+    if (newIds.length > 0) setSelectedIds(new Set(newIds));
+    setContextMenu(null);
+  }, [boardId, userId, clipboardNotes, clipboardShapes]);
+
+  useEffect(() => {
+    onSelectionChange?.(selectedIds.size);
+  }, [selectedIds.size, onSelectionChange]);
 
   useImperativeHandle(
     ref,
@@ -376,9 +517,38 @@ export const WhiteboardCanvas = forwardRef<
       getNotes: () => notesRef.current,
       createNotesFromAI,
       clearCanvas,
+      deleteSelection: handleDeleteSelection,
     }),
-    [createNotesFromAI, clearCanvas]
+    [createNotesFromAI, clearCanvas, handleDeleteSelection]
   );
+
+  const handleSelectNote = useCallback((id: string, addToSelection: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (addToSelection) {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      } else {
+        next.clear();
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectShape = useCallback((id: string, addToSelection: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (addToSelection) {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      } else {
+        next.clear();
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
   const handleStageMouseDown = useCallback(
     (evt: Konva.KonvaEventObject<MouseEvent>) => {
@@ -391,10 +561,17 @@ export const WhiteboardCanvas = forwardRef<
         return;
       }
 
-      if (selectedShapeId) {
-        if (target === stage || isClickOnStickyNote(target)) {
-          setSelectedShapeId(null);
-          return;
+      const clickOnEmpty =
+        target === stage || (!isClickOnStickyNote(target) && !isClickOnShape(target) && !isClickOnTransformer(target));
+
+      if (clickOnEmpty && pos) {
+        const { x, y } = screenToBoard(pos.x, pos.y);
+        if (activeTool === "select") {
+          setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
+          setSelectedIds(new Set());
+        } else {
+          setSelectedIds(new Set());
+          setSelectionBox(null);
         }
       }
 
@@ -416,7 +593,6 @@ export const WhiteboardCanvas = forwardRef<
       handleCreateShape,
       handlePanStart,
       screenToBoard,
-      selectedShapeId,
     ]
   );
 
@@ -428,23 +604,54 @@ export const WhiteboardCanvas = forwardRef<
         const { x, y } = screenToBoard(pos.x, pos.y);
         syncCursor(x, y);
       }
+      if (selectionBox && pos) {
+        const { x, y } = screenToBoard(pos.x, pos.y);
+        setSelectionBox((prev) =>
+          prev ? { ...prev, endX: x, endY: y } : null
+        );
+      }
       if (activeTool === "hand") {
         handlePanMove(evt);
       }
     },
-    [activeTool, syncCursor, handlePanMove, screenToBoard]
+    [activeTool, syncCursor, handlePanMove, screenToBoard, selectionBox]
   );
 
   const handleStageMouseUp = useCallback(() => {
+    if (selectionBox) {
+      const left = Math.min(selectionBox.startX, selectionBox.endX);
+      const right = Math.max(selectionBox.startX, selectionBox.endX);
+      const top = Math.min(selectionBox.startY, selectionBox.endY);
+      const bottom = Math.max(selectionBox.startY, selectionBox.endY);
+      const ids = new Set<string>();
+      for (const note of notes) {
+        const nRight = note.x + note.width;
+        const nBottom = note.y + note.height;
+        if (!(right < note.x || left > nRight || bottom < note.y || top > nBottom)) {
+          ids.add(note.id);
+        }
+      }
+      for (const shape of shapes) {
+        const sRight = shape.x + shape.width;
+        const sBottom = shape.y + shape.height;
+        if (!(right < shape.x || left > sRight || bottom < shape.y || top > sBottom)) {
+          ids.add(shape.id);
+        }
+      }
+      setSelectedIds(ids);
+      setSelectionBox(null);
+    }
     handlePanEnd();
-  }, [handlePanEnd]);
+  }, [handlePanEnd, selectionBox, notes, shapes]);
 
   const cursorStyle =
     activeTool === "hand"
       ? "grab"
-      : isShapeTool(activeTool)
+      : activeTool === "select"
         ? "crosshair"
-        : "default";
+        : isShapeTool(activeTool)
+          ? "crosshair"
+          : "default";
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -456,10 +663,47 @@ export const WhiteboardCanvas = forwardRef<
     return () => el.removeEventListener("wheel", preventScroll);
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inInput = target?.closest("input, textarea, [contenteditable=true]");
+      if (inInput) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedIds.size > 0) {
+          e.preventDefault();
+          handleDeleteSelection();
+        }
+        return;
+      }
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key === "d") {
+        e.preventDefault();
+        if (selectedIds.size > 0) handleDuplicate();
+      }
+      if (ctrl && e.key === "c") {
+        if (selectedIds.size > 0) {
+          e.preventDefault();
+          handleCopy();
+        }
+      }
+      if (ctrl && e.key === "v") {
+        if (clipboardNotes.length > 0 || clipboardShapes.length > 0) {
+          e.preventDefault();
+          handlePaste();
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIds.size, clipboardNotes.length, clipboardShapes.length, handleDuplicate, handleCopy, handlePaste, handleDeleteSelection]);
+
   return (
     <div
       ref={containerRef}
       className="relative h-full w-full overflow-hidden bg-[#fff8e1]"
+      tabIndex={0}
+      role="application"
+      aria-label="Whiteboard canvas"
     >
       <Stage
         width={width}
@@ -477,6 +721,8 @@ export const WhiteboardCanvas = forwardRef<
           notes={notes}
           editingNoteId={editingNoteId}
           onEditingNoteIdChange={setEditingNoteId}
+          selectedIds={selectedIds}
+          onSelectNote={handleSelectNote}
           onNoteUpdate={handleNoteUpdate}
           onNoteContextMenu={handleNoteContextMenu}
           onDragStart={(elementId) =>
@@ -503,8 +749,8 @@ export const WhiteboardCanvas = forwardRef<
           boardId={boardId}
           userId={userId}
           shapes={shapes}
-          selectedShapeId={selectedShapeId}
-          onSelectShape={setSelectedShapeId}
+          selectedIds={selectedIds}
+          onSelectShape={handleSelectShape}
           onShapeUpdate={handleShapeUpdate}
           onShapeContextMenu={handleShapeContextMenu}
           onDragStart={(elementId) =>
@@ -527,6 +773,20 @@ export const WhiteboardCanvas = forwardRef<
           scaleX={scale}
           scaleY={scale}
         />
+        {selectionBox && (
+          <Layer x={stageX} y={stageY} scaleX={scale} scaleY={scale} listening={false}>
+            <Rect
+              x={Math.min(selectionBox.startX, selectionBox.endX)}
+              y={Math.min(selectionBox.startY, selectionBox.endY)}
+              width={Math.abs(selectionBox.endX - selectionBox.startX)}
+              height={Math.abs(selectionBox.endY - selectionBox.startY)}
+              stroke="#ff8f00"
+              strokeWidth={2 / scale}
+              dash={[4 / scale, 4 / scale]}
+              fill="rgba(255, 143, 0, 0.1)"
+            />
+          </Layer>
+        )}
         <RemoteCursors
           boardId={boardId}
           excludeUserId={userId}
@@ -545,6 +805,10 @@ export const WhiteboardCanvas = forwardRef<
             onClose={() => setContextMenu(null)}
             onDelete={handleDelete}
             forShape={contextMenu.type === "shape"}
+            onDuplicate={selectedIds.size > 0 ? handleDuplicate : undefined}
+            onCopy={selectedIds.size > 0 ? handleCopy : undefined}
+            onPaste={clipboardNotes.length > 0 || clipboardShapes.length > 0 ? handlePaste : undefined}
+            pasteEnabled={clipboardNotes.length > 0 || clipboardShapes.length > 0}
           />,
           document.body
         )}

@@ -1,1 +1,1 @@
-export type Tool = "sticky-note" | "rect" | "triangle" | "circle" | "hand";
+export type Tool = "hand" | "select" | "sticky-note" | "rect" | "triangle" | "circle";

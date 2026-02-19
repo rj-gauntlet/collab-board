@@ -24,6 +24,7 @@ export default function BoardPage() {
 
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const [activeTool, setActiveTool] = useState<Tool>("hand");
+  const [selectedCount, setSelectedCount] = useState(0);
   const [perfMonitorVisible, setPerfMonitorVisible] = useState(false);
   const [nameEditing, setNameEditing] = useState(false);
   const [nameEditValue, setNameEditValue] = useState("");
@@ -322,6 +323,8 @@ export default function BoardPage() {
             <Toolbar
               activeTool={activeTool}
               onToolChange={setActiveTool}
+              hasSelection={selectedCount > 0}
+              onDeleteSelection={() => canvasRef.current?.deleteSelection?.()}
             />
           </div>
         </div>
@@ -335,6 +338,7 @@ export default function BoardPage() {
               width={canvasSize.width}
               height={canvasSize.height}
               activeTool={activeTool}
+              onSelectionChange={setSelectedCount}
             />
           </WhiteboardErrorBoundary>
         </div>

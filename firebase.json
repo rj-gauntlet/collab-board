@@ -8,15 +8,21 @@
   },
   "hosting": {
     "public": "out",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
+        "source": "/",
+        "run": {
+          "serviceId": "collab-board",
+          "region": "us-east4"
+        }
+      },
+      {
         "source": "**",
-        "destination": "/index.html"
+        "run": {
+          "serviceId": "collab-board",
+          "region": "us-east4"
+        }
       }
     ]
   },

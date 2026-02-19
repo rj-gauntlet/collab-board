@@ -12,7 +12,9 @@ type ShapeUpdate = Partial<
 interface ShapeNodeProps {
   shape: ShapeElement;
   isSelected: boolean;
-  onSelect: () => void;
+  isMultiSelectMode?: boolean;
+  onSelect: (shiftKey: boolean) => void;
+  onRegisterSelectRef?: (id: string, node: Konva.Node | null) => void;
   onChange: (updates: ShapeUpdate) => void;
   onContextMenu?: (evt: MouseEvent) => void;
   onDragStart: () => void;
@@ -25,7 +27,9 @@ interface ShapeNodeProps {
 export function ShapeNode({
   shape,
   isSelected,
+  isMultiSelectMode = false,
   onSelect,
+  onRegisterSelectRef,
   onChange,
   onContextMenu,
   onDragStart,
@@ -38,11 +42,19 @@ export function ShapeNode({
   const trRef = useRef<Konva.Transformer>(null);
 
   useEffect(() => {
-    if (isSelected && trRef.current && groupRef.current) {
+    if (isSelected && !isMultiSelectMode && trRef.current && groupRef.current) {
       trRef.current.nodes([groupRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSelected, isMultiSelectMode]);
+
+  useEffect(() => {
+    if (isSelected && isMultiSelectMode && onRegisterSelectRef) {
+      const node = groupRef.current;
+      onRegisterSelectRef(shape.id, node);
+      return () => onRegisterSelectRef(shape.id, null);
+    }
+  }, [isSelected, isMultiSelectMode, shape.id, onRegisterSelectRef]);
 
   const displayX = remoteX ?? shape.x;
   const displayY = remoteY ?? shape.y;
@@ -167,8 +179,8 @@ export function ShapeNode({
         height={shape.height}
         rotation={rotation}
         draggable
-        onClick={onSelect}
-        onTap={onSelect}
+        onClick={(e) => onSelect(e.evt.shiftKey)}
+        onTap={(e) => onSelect(e.evt.shiftKey)}
         onContextMenu={handleContextMenu}
         onDragStart={onDragStart}
         onDragMove={handleDragMove}
@@ -181,7 +193,7 @@ export function ShapeNode({
       >
         {renderShapeContent()}
       </Group>
-      {isSelected && (
+      {isSelected && !isMultiSelectMode && (
         <Transformer
           ref={trRef}
           name="transformer"

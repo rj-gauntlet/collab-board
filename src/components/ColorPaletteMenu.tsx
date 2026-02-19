@@ -30,6 +30,10 @@ interface ColorPaletteMenuProps {
   onDelete?: () => void;
   /** For shapes: also set stroke to a darker variant of fill */
   forShape?: boolean;
+  onDuplicate?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
+  pasteEnabled?: boolean;
 }
 
 /** Returns a darker stroke color for a given fill (for shapes) */
@@ -48,6 +52,10 @@ export function ColorPaletteMenu({
   onClose,
   onDelete,
   forShape = false,
+  onDuplicate,
+  onCopy,
+  onPaste,
+  pasteEnabled = false,
 }: ColorPaletteMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -82,19 +90,60 @@ export function ColorPaletteMenu({
       <div className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
         {forShape ? "Shape color" : "Note color"}
       </div>
-      {onDelete && (
-        <button
-          type="button"
-          className="mb-2 w-full rounded-md px-2 py-1.5 text-left text-sm text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/50"
-          onClick={() => {
-            onDelete();
-            onClose();
-          }}
-          role="menuitem"
-        >
-          Delete
-        </button>
-      )}
+      <div className="mb-2 flex flex-col gap-0.5">
+        {onDuplicate && (
+          <button
+            type="button"
+            className="w-full rounded-md px-2 py-1.5 text-left text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            onClick={() => {
+              onDuplicate();
+              onClose();
+            }}
+            role="menuitem"
+          >
+            Duplicate
+          </button>
+        )}
+        {onCopy && (
+          <button
+            type="button"
+            className="w-full rounded-md px-2 py-1.5 text-left text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            onClick={() => {
+              onCopy();
+              onClose();
+            }}
+            role="menuitem"
+          >
+            Copy
+          </button>
+        )}
+        {pasteEnabled && onPaste && (
+          <button
+            type="button"
+            className="w-full rounded-md px-2 py-1.5 text-left text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            onClick={() => {
+              onPaste();
+              onClose();
+            }}
+            role="menuitem"
+          >
+            Paste
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            className="w-full rounded-md px-2 py-1.5 text-left text-sm text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/50"
+            onClick={() => {
+              onDelete();
+              onClose();
+            }}
+            role="menuitem"
+          >
+            Delete
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-4 gap-1.5">
         {STICKY_NOTE_PALETTE.map((color) => (
           <button
