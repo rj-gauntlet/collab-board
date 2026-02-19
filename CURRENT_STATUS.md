@@ -53,33 +53,29 @@ _Last updated: Feb 2026. Use this alongside PRD.md for full context._
 
 ## GIT LOG (recent)
 ```
+d7e55dc  feat: connector styles, keyboard shortcuts modal, updated docs
 25b7be9  fix: connectors now follow dragged elements in real-time
 38693b1  fix: connector label editor overlays label exactly; transparent-then-opaque background
 3bcceba  feat: canvas feature set — frames, text, connectors, undo/redo, zoom, snap, export
 e21371c  feat: multi-select, duplicate/copy-paste, delete selection
 ```
 
-## UNCOMMITTED CHANGES (ready to commit)
-The following changes are complete, lint-free, and staged but not yet committed:
-- `src/features/connectors/types.ts` — added `dashed`, `curved`, `bidirectional` fields
-- `src/features/connectors/usePersistedConnectors.ts` — reads/writes new fields
-- `src/features/connectors/ConnectorsLayer.tsx` — full rewrite: dashed/curved/bidirectional rendering, click-to-select, selection glow, invisible wide hit area for easier clicking
-- `src/components/ConnectorStyleBar.tsx` — NEW: floating toolbar for selected connector (line/arrow, dashed, curved, bidir, stroke width, color swatches, delete)
-- `src/components/KeyboardShortcutsModal.tsx` — NEW: full keyboard shortcuts reference modal
-- `src/features/whiteboard/WhiteboardCanvas.tsx` — `selectedConnectorId` state, `showShortcuts` state, `deleteConnector` on Delete key, both new components wired in
-- `src/app/[boardId]/page.tsx` — `?` button removed from header (modal accessible only via `?` key)
-
-**Next action: commit the above changes before migrating.**
+## UNCOMMITTED CHANGES
+None — all changes are committed as of the migration.
 
 ## NOT YET IMPLEMENTED (Pending)
-- [ ] **Image upload** — place/resize images on canvas (highest priority)
+
+### HIGH PRIORITY
+- [ ] **AI Board Agent** — natural language chat panel that creates/modifies/arranges board elements via GPT-4o-mini function calling (Vercel AI SDK). Full spec in PRD.md. Acceptance tests defined — must support creation, manipulation, layout, and complex template commands.
+
+### NORMAL PRIORITY
+- [ ] **Image upload** — place/resize images on canvas
 - [ ] **Real-time cursors** — show other users' cursors with name labels (RTDB infra exists, just needs rendering)
 - [ ] **More shape types** — diamond, hexagon, star, speech bubble
 - [ ] **Minimap** — small board overview panel
 - [ ] **Layers / Z-order panel** — list, reorder, lock, hide elements
-- [ ] **Templates** — pre-built layouts (flowchart, kanban, mind map)
+- [ ] **Templates** — pre-built layouts (may be delivered via AI Agent)
 - [ ] **Pen/drawing tool** — freehand strokes (was in original PRD; not yet re-implemented after canvas refactor)
-- [ ] **AI Magic button** — cluster sticky notes into themes via GPT-4o-mini
 
 ## IMPORTANT PATTERNS TO KNOW
 

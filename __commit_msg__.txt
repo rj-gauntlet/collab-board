@@ -1,16 +1,11 @@
-feat: connector styles, keyboard shortcuts modal, updated docs
+docs: replace AI Magic button with AI Board Agent spec
 
-Connector styles:
-- Added dashed, curved, bidirectional fields to ConnectorElement type and Firestore persistence
-- ConnectorsLayer: dashed lines (Konva dash), curved lines (quadratic bezier via perpendicular control point), bidirectional arrowheads, click-to-select with amber glow highlight, invisible wide hit area for easier clicking
-- ConnectorStyleBar: floating toolbar (line/arrow, dashed, curved, bidirectional, stroke width, color, delete) shown at top-center when connector selected
-- Delete key removes selected connector; Escape deselects
-
-Keyboard shortcuts modal:
-- KeyboardShortcutsModal component with all shortcuts grouped by section
-- Press ? anywhere to open/close; Escape closes
-- showShortcuts() exposed via WhiteboardCanvasHandle
-
-Docs:
-- PRD.md fully rewritten with complete feature spec, file structure, sync architecture, known patterns
-- CURRENT_STATUS.md fully rewritten with completed features, uncommitted changes, pending work, and key architectural notes for context on new machine
+- Remove all references to the AI Magic button (feature dropped)
+- Add comprehensive AI Board Agent section to PRD.md:
+  - Chat panel UI description
+  - Implementation approach (Vercel AI SDK, GPT-4o-mini, tool/function calling)
+  - Full acceptance test suite (creation, manipulation, layout, complex/template commands)
+  - Suggested tool schema (create_sticky_note, create_shape, create_frame, etc.)
+  - Board-space coordinate constraints and defaults
+- Update CURRENT_STATUS.md pending list: AI Board Agent marked HIGH PRIORITY
+- Update git log and clear stale uncommitted-changes section

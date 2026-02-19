@@ -9,7 +9,7 @@ A high-performance, real-time collaborative whiteboard with AI-assisted brainsto
 - **Backend/Sync:** Firebase Firestore (persistent elements) + Firebase Realtime Database (ephemeral: cursors, active drags)
 - **Auth:** Firebase Anonymous Authentication
 - **Hosting:** Firebase App Hosting (backend SSR) + Firebase Hosting (static fallback)
-- **AI:** Vercel AI SDK + GPT-4o-mini ("Magic" button to cluster sticky notes into themes)
+- **AI:** Vercel AI SDK + GPT-4o-mini (AI Board Agent — natural language board control)
 - **Styling:** Tailwind CSS
 
 ## Canvas Element Types
@@ -215,12 +215,73 @@ src/
 - `dragBoundFunc` in StickyNote/ShapeNode receives and returns **absolute screen coordinates**; `node.x()` in `onDragMove` returns **board-space (local layer) coordinates**.
 - The `remoteNotes` loop in `noteMap` construction skips elements with a `localNoteOverrides` entry to prevent Firebase RTDB snapshots from clobbering in-progress drag positions.
 
+## AI Board Agent (HIGH PRIORITY)
+
+### Overview
+A chat panel that accepts natural language instructions and creates, modifies, or arranges elements on the board. The agent interprets the user's intent and calls structured board-manipulation functions to produce the result.
+
+### UI
+- A collapsible chat sidebar (or floating panel) within the board page
+- User types a natural language instruction; the agent responds with a brief confirmation and executes the changes directly on the board
+- Streamed responses via Vercel AI SDK (`useChat` hook or `streamText`)
+- Chat history preserved per session (not required to persist across page loads)
+
+### Implementation Approach
+- **API Route:** `POST /api/ai/board-agent` — receives the user message + current board state (element summaries), calls GPT-4o-mini via Vercel AI SDK with tool/function calling enabled
+- **Tool Calling:** The model selects from a set of board-manipulation tools (defined as JSON Schema functions). The API route executes the selected tool(s) against Firestore and returns a confirmation.
+- **Board State Context:** Send a compact JSON snapshot of current elements (id, type, text/title, x, y, width, height, color) as part of the system/user context so the agent can reference existing elements by description.
+- **`WhiteboardCanvasHandle`** must expose methods the agent can call: `createNote`, `createShape`, `createFrame`, `createConnector`, `updateElement`, `moveElements`, `deleteElements` — or the API route writes directly to Firestore.
+
+### Required Capabilities (Acceptance Tests)
+The agent must handle at least one instruction from each category:
+
+**Creation**
+- `"Add a yellow sticky note that says 'User Research'"` → creates sticky note, color yellow, correct text
+- `"Create a blue rectangle at position 100, 200"` → creates shape (rect), fill blue, x=100, y=200
+- `"Add a frame called 'Sprint Planning'"` → creates frame with that title
+
+**Manipulation**
+- `"Move all the pink sticky notes to the right side"` → finds notes with pink color, shifts x positions to right portion of canvas
+- `"Change the sticky note color to green"` → updates color of selected or last-created note
+- `"Resize the frame to fit its contents"` → computes bounding box of elements inside the frame, resizes frame to match
+
+**Layout**
+- `"Arrange these sticky notes in a grid"` → distributes selected notes into a uniform grid with consistent spacing
+- `"Create a 2x3 grid of sticky notes for pros and cons"` → creates 6 notes arranged in 2 columns × 3 rows
+- `"Space these elements evenly"` → distributes selected elements with equal gaps horizontally or vertically
+
+**Complex / Templates**
+- `"Create a SWOT analysis template with four quadrants"` → creates a frame + 4 labeled sub-frames or sticky note groups (Strengths, Weaknesses, Opportunities, Threats) arranged in a 2×2 grid
+- `"Build a user journey map with 5 stages"` → creates 5 frames/columns with stage labels and connector arrows between them
+- `"Set up a retrospective board with What Went Well, What Didn't, and Action Items columns"` → creates 3 labeled frames side by side
+
+### Suggested Tool Schema (for GPT function calling)
+```json
+[
+  { "name": "create_sticky_note", "parameters": { "text", "color", "x", "y", "width", "height" } },
+  { "name": "create_shape", "parameters": { "shapeType", "fill", "x", "y", "width", "height" } },
+  { "name": "create_frame", "parameters": { "title", "x", "y", "width", "height" } },
+  { "name": "create_connector", "parameters": { "fromId", "toId", "style", "label" } },
+  { "name": "update_elements", "parameters": { "ids": [], "updates": {} } },
+  { "name": "move_elements", "parameters": { "ids": [], "dx", "dy" } },
+  { "name": "delete_elements", "parameters": { "ids": [] } },
+  { "name": "arrange_grid", "parameters": { "ids": [], "columns", "spacing" } }
+]
+```
+
+### Key Constraints
+- Element positions are in **board space** (not screen pixels). The agent should place elements at sensible board coordinates (e.g. starting around x=100, y=100 with 200px gaps for notes).
+- Default sticky note size: 160×120. Default frame: 300×200. Default shape: 120×120.
+- The agent should batch multiple Firestore writes (e.g. creating 6 notes for a grid) in a single API call, not one request per element.
+
+---
+
 ## Pending / Future Work
+- [ ] **AI Board Agent** — natural language board control (HIGH PRIORITY — see section above)
 - [ ] **Image upload** — place and resize images on the canvas
 - [ ] **Real-time collaboration cursors** — show other users' cursors with names (RTDB infrastructure exists)
 - [ ] **More shape types** — diamond, hexagon, star, speech bubble
 - [ ] **Minimap** — small overview panel for large boards
 - [ ] **Layers / Z-order panel** — list elements, reorder, lock/hide
-- [ ] **Templates** — pre-built layouts (flowchart, kanban, mind map)
+- [ ] **Templates** — pre-built layouts (accessible via AI agent or manual menu)
 - [ ] **Pen/drawing tool** — freehand strokes (was in original PRD, not yet re-implemented after canvas refactor)
-- [ ] **AI Magic button** — cluster sticky notes into themes via GPT-4o-mini (Vercel AI SDK)
