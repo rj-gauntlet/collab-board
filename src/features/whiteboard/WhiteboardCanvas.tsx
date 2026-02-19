@@ -1380,6 +1380,7 @@ export const WhiteboardCanvas = forwardRef<
           onRequestEditLabel={(connectorId, boardMidX, boardMidY, label) =>
             setEditingConnectorLabel({ connectorId, boardMidX, boardMidY, label })
           }
+          editingConnectorId={editingConnectorLabel?.connectorId}
           x={stageX}
           y={stageY}
           scaleX={scale}
@@ -1493,7 +1494,7 @@ export const WhiteboardCanvas = forwardRef<
         return (
           <ConnectorLabelEditor
             key={editingConnectorLabel.connectorId}
-            screenX={sx} screenY={sy}
+            screenX={sx} screenY={sy} scale={scale}
             initialLabel={editingConnectorLabel.label}
             onCommit={(label) => {
               const conn = connectors.find((c) => c.id === editingConnectorLabel.connectorId);
@@ -1765,14 +1766,18 @@ function EditableTextArea({
 // ─── Connector label inline editor ───────────────────────────────────────────
 
 interface ConnectorLabelEditorProps {
+  /** Screen-space X coordinate of the connector midpoint (board-space mid converted via stageX + boardMidX * scale). */
   screenX: number;
+  /** Screen-space Y coordinate of the connector midpoint. */
   screenY: number;
+  /** Current zoom scale, used to match the Konva label's pixel dimensions exactly. */
+  scale: number;
   initialLabel: string;
   onCommit: (label: string) => void;
   onCancel: () => void;
 }
 
-function ConnectorLabelEditor({ screenX, screenY, initialLabel, onCommit, onCancel }: ConnectorLabelEditorProps) {
+function ConnectorLabelEditor({ screenX, screenY, scale, initialLabel, onCommit, onCancel }: ConnectorLabelEditorProps) {
   const [value, setValue] = useState(initialLabel);
   const ref = useRef<HTMLInputElement>(null);
 
@@ -1786,6 +1791,16 @@ function ConnectorLabelEditor({ screenX, screenY, initialLabel, onCommit, onCanc
     if (e.key === "Escape") onCancel();
   };
 
+  // Mirror the Konva label dimensions exactly:
+  //   board-space width  = chars * 8 + 8  (min 80 so empty placeholder is visible)
+  //   board-space height = 20
+  //   board-space font   = 12
+  const boardW = Math.max(value.length * 8 + 8, 80);
+  const boardH = 20;
+  const w = boardW * scale;
+  const h = boardH * scale;
+  const fontSize = 12 * scale;
+
   return (
     <input
       ref={ref}
@@ -1798,17 +1813,18 @@ function ConnectorLabelEditor({ screenX, screenY, initialLabel, onCommit, onCanc
       placeholder="Label…"
       style={{
         position: "absolute",
-        left: screenX - 60,
-        top: screenY - 14,
-        width: 120,
-        fontSize: 12,
+        left: screenX - w / 2,
+        top: screenY - h / 2,
+        width: w,
+        height: h,
+        fontSize,
         fontFamily: "sans-serif",
         color: "#1f2937",
-        padding: "2px 6px",
-        border: "2px solid #ff8f00",
-        borderRadius: 4,
+        padding: `${2 * scale}px ${6 * scale}px`,
+        border: "1.5px solid #000000",
+        borderRadius: 3 * scale,
         outline: "none",
-        background: "white",
+        background: "transparent",
         boxSizing: "border-box",
         zIndex: 10002,
         textAlign: "center",

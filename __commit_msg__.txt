@@ -1,19 +1,7 @@
-feat: canvas feature set — frames, text, connectors, undo/redo, zoom, snap, export
+fix: connector label editor overlays label exactly; transparent-then-opaque background
 
-- Standalone text elements with inline HTML editor (resizable, transparent bg, border in edit mode)
-- Frames with styled title bar, separator line, ellipsis truncation, and inline title editor
-- Connectors with anchor-point routing (closest edge midpoints) and inline label editor
-- Connector/frame-title editors overlay exactly on the element using board-space coords
-- Real-time drag: connectors follow shapes/notes as they are dragged
-- Text formatting toolbar (bold, italic, font size, font family, color) for selected text
-- Undo/Redo (Ctrl+Z/Y) with 50-step history and full Firestore sync on restore
-- Zoom controls UI (+/-, %, fit-to-screen button)
-- Fit-to-screen: computes union bbox of all elements and zooms/pans to show them all
-- Snap-to-grid: applied on drag-end for notes, shapes, frames, and text elements
-- Grid overlay (GridLayer) toggled from header
-- Export canvas as PNG via Konva stage.toDataURL (retina quality)
-- Pinch-to-zoom (mobile/touch) via visualViewport-aware handlers
-- Browser zoom resilience: visualViewport + ResizeObserver + window resize listeners
-- Konva Stage pixelRatio tracks window.devicePixelRatio; Stage remounts on DPR change to eliminate blur
-- Canvas size uses Math.ceil to prevent 1-px unrendered slivers on zoom
-- Jest + Testing Library setup with mocks for Konva and Firebase
+- ConnectorLabelEditor now mirrors Konva label dimensions (chars*8+8 width, 20h) scaled by zoom
+- Editor is centered on the connector midpoint in screen space
+- Konva label hides while editing so the HTML input overlays it seamlessly
+- Label background changed to fully opaque white with a thin connector-colored border
+- Label font and sizing scale with zoom level

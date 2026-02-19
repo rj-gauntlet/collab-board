@@ -57,6 +57,8 @@ interface ConnectorsLayerProps {
   shapes: ShapeElement[];
   /** Called with board-space midpoint coordinates of the connector. */
   onRequestEditLabel?: (connectorId: string, boardMidX: number, boardMidY: number, label: string) => void;
+  /** ID of the connector whose label is currently being edited — hides the Konva label so the HTML editor overlays it cleanly. */
+  editingConnectorId?: string;
   x?: number;
   y?: number;
   scaleX?: number;
@@ -68,6 +70,7 @@ export function ConnectorsLayer({
   notes,
   shapes,
   onRequestEditLabel,
+  editingConnectorId,
   x = 0,
   y = 0,
   scaleX = 1,
@@ -131,7 +134,7 @@ export function ConnectorsLayer({
                 onRequestEditLabel?.(conn.id, midX, midY, label);
               }}
             />
-            {label ? (
+            {label && conn.id !== editingConnectorId ? (
               <Group x={midX} y={midY}>
                 <Rect
                   x={-label.length * 4 - 4}
@@ -141,7 +144,7 @@ export function ConnectorsLayer({
                   fill="white"
                   cornerRadius={3}
                   stroke={stroke}
-                  strokeWidth={0.5}
+                  strokeWidth={0.75}
                   listening={hasLabelHandler}
                   onDblClick={(e) => {
                     e.cancelBubble = true;
