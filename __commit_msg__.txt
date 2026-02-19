@@ -1,7 +1,12 @@
-fix: connector label editor overlays label exactly; transparent-then-opaque background
+fix: connectors now follow dragged elements in real-time
 
-- ConnectorLabelEditor now mirrors Konva label dimensions (chars*8+8 width, 20h) scaled by zoom
-- Editor is centered on the connector midpoint in screen space
-- Konva label hides while editing so the HTML input overlays it seamlessly
-- Label background changed to fully opaque white with a thin connector-colored border
-- Label font and sizing scale with zoom level
+Root cause: useRemoteNotes returns all notes (including the current user's)
+from Firebase RTDB. The noteMap/shapeMap merge used `updatedAt >=` which
+always let remote snapshots overwrite local drag overrides (equal timestamps),
+so ConnectorsLayer always read the pre-drag position from the database.
+
+Fixes:
+- Skip remote note/shape override when a local drag override exists for that ID
+- Guard all four local-override cleanup effects (notes, shapes, text, frames)
+  against clearing overrides for the element currently being dragged, using
+  a draggingElementIdRef kept in sync via useLayoutEffect

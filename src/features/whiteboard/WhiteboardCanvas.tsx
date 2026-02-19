@@ -3,6 +3,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useState,
   useImperativeHandle,
   forwardRef,
@@ -202,6 +203,13 @@ export const WhiteboardCanvas = forwardRef<
     x: number;
     y: number;
   }>({ isDragging: false, elementId: null, x: 0, y: 0 });
+  // Ref so cleanup effects can read the current dragging element without stale closures.
+  const draggingElementIdRef = useRef<string | null>(null);
+  // useLayoutEffect runs synchronously after every render, before passive effects,
+  // so the ref is always current by the time Firestore cleanup effects fire.
+  useLayoutEffect(() => {
+    draggingElementIdRef.current = draggingState.elementId;
+  }, [draggingState.elementId]);
 
   type ContextMenu =
     | { type: "note"; note: StickyNoteElement; clientX: number; clientY: number }
@@ -640,7 +648,9 @@ export const WhiteboardCanvas = forwardRef<
     setLocalNoteOverrides((prev) => {
       const next = new Map(prev);
       for (const note of persistedNotes) {
-        next.delete(note.id);
+        // Don't clear the override for the element currently being dragged —
+        // the local position must stay authoritative until the drag ends.
+        if (note.id !== draggingElementIdRef.current) next.delete(note.id);
       }
       return next;
     });
@@ -650,7 +660,7 @@ export const WhiteboardCanvas = forwardRef<
     setLocalShapeOverrides((prev) => {
       const next = new Map(prev);
       for (const shape of persistedShapes) {
-        next.delete(shape.id);
+        if (shape.id !== draggingElementIdRef.current) next.delete(shape.id);
       }
       return next;
     });
@@ -667,7 +677,7 @@ export const WhiteboardCanvas = forwardRef<
     setLocalTextOverrides((prev) => {
       const next = new Map(prev);
       for (const t of persistedTextElements) {
-        next.delete(t.id);
+        if (t.id !== draggingElementIdRef.current) next.delete(t.id);
       }
       return next;
     });
@@ -684,7 +694,7 @@ export const WhiteboardCanvas = forwardRef<
     setLocalFrameOverrides((prev) => {
       const next = new Map(prev);
       for (const f of persistedFrames) {
-        next.delete(f.id);
+        if (f.id !== draggingElementIdRef.current) next.delete(f.id);
       }
       return next;
     });
@@ -695,6 +705,9 @@ export const WhiteboardCanvas = forwardRef<
     noteMap.set(n.id, localNoteOverrides.get(n.id) ?? n);
   }
   for (const n of remoteNotes) {
+    // Local drag overrides take priority — don't let a remote snapshot clobber
+    // the position we're currently dragging to.
+    if (localNoteOverrides.has(n.id)) continue;
     const existing = noteMap.get(n.id);
     if (!existing || n.updatedAt >= existing.updatedAt) {
       noteMap.set(n.id, n);
@@ -716,6 +729,8 @@ export const WhiteboardCanvas = forwardRef<
     shapeMap.set(s.id, localShapeOverrides.get(s.id) ?? s);
   }
   for (const s of remoteShapes) {
+    // Local drag overrides take priority over remote snapshots.
+    if (localShapeOverrides.has(s.id)) continue;
     const existing = shapeMap.get(s.id);
     if (!existing || s.updatedAt >= existing.updatedAt) {
       shapeMap.set(s.id, s);
