@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   WhiteboardCanvas,
   WhiteboardErrorBoundary,
@@ -21,7 +21,9 @@ import { useSmartCluster, BoardAgentChat } from "@/features/ai-agent";
 
 export default function BoardPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const boardId = typeof params.boardId === "string" ? params.boardId : null;
+  const isE2E = searchParams.get("e2e") === "1";
 
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const [activeTool, setActiveTool] = useState<Tool>("hand");
@@ -44,6 +46,17 @@ export default function BoardPage() {
   const [pixelRatio, setPixelRatio] = useState(() =>
     typeof window !== "undefined" ? window.devicePixelRatio : 1
   );
+  const [e2eBoardState, setE2eBoardState] = useState<string>("[]");
+
+  // Expose board state for e2e tests when ?e2e=1
+  useEffect(() => {
+    if (!isE2E || !boardId) return;
+    const id = setInterval(() => {
+      const state = canvasRef.current?.getBoardState() ?? [];
+      setE2eBoardState(JSON.stringify(state));
+    }, 300);
+    return () => clearInterval(id);
+  }, [isE2E, boardId]);
 
   useEffect(() => {
     const el = canvasContainerRef.current;
@@ -357,16 +370,6 @@ export default function BoardPage() {
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setAgentPanelOpen((v) => !v)}
-              className={`font-sans rounded-md px-3 py-1.5 text-sm transition ${
-                agentPanelOpen ? "bg-white/30 text-white" : "text-white/90 hover:bg-white/20 hover:text-white"
-              }`}
-              title="Toggle AI board agent"
-            >
-              Agent
-            </button>
             <UsersList
               boardId={boardId}
               currentUserId={user.uid}
@@ -434,14 +437,32 @@ export default function BoardPage() {
             />
           </div>
         </div>
+        {/* Agent button above zoom controls (zoom is inside canvas at bottom-4 right-4) */}
+        <div className="absolute bottom-14 right-4 z-20">
+          <button
+            type="button"
+            onClick={() => setAgentPanelOpen((v) => !v)}
+            className={`font-sans flex items-center gap-2 rounded-xl border border-[#e65100]/30 bg-[#ff8f00] px-3 py-2 text-sm font-medium text-white shadow-md transition ${
+              agentPanelOpen ? "bg-[#e65100]" : "hover:bg-[#e65100]"
+            }`}
+            title="Toggle AI board agent"
+            data-testid="agent-toggle"
+          >
+            Agent
+          </button>
+        </div>
         {agentPanelOpen && boardId && (
-          <div className="absolute right-4 top-4 z-20">
+          <div className="absolute right-4 bottom-24 z-20 max-h-[min(60vh,420px)]" data-testid="board-agent-panel">
             <BoardAgentChat
               boardId={boardId}
               canvasRef={canvasRef}
               getBoardState={() => canvasRef.current?.getBoardState() ?? []}
+              className="mb-2"
             />
           </div>
+        )}
+        {isE2E && (
+          <div data-testid="board-state" data-state={e2eBoardState} aria-hidden className="hidden" />
         )}
         <div className="absolute inset-0">
           <WhiteboardErrorBoundary>
