@@ -49,6 +49,20 @@ export function executeBoardAgentTools(
           }
           break;
         }
+        case "create_shapes": {
+          const items = inv.args.items as Array<{
+            shapeType: "rect" | "circle" | "triangle";
+            fill?: string;
+            x?: number;
+            y?: number;
+            width?: number;
+            height?: number;
+          }>;
+          if (Array.isArray(items) && items.length > 0) {
+            handle.createShapesFromAI(items);
+          }
+          break;
+        }
         case "create_frame": {
           const title = inv.args.title as string;
           if (title != null) {

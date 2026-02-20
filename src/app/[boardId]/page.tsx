@@ -445,10 +445,10 @@ export default function BoardPage() {
             className={`font-sans flex items-center gap-2 rounded-xl border border-[#e65100]/30 bg-[#ff8f00] px-3 py-2 text-sm font-medium text-white shadow-md transition ${
               agentPanelOpen ? "bg-[#e65100]" : "hover:bg-[#e65100]"
             }`}
-            title="Toggle AI board agent"
+            title="Toggle CollabBot"
             data-testid="agent-toggle"
           >
-            Agent
+            CollabBot
           </button>
         </div>
         {agentPanelOpen && boardId && (

@@ -126,6 +126,7 @@ export interface DistributeElementsArgs {
 export type BoardAgentToolName =
   | "create_sticky_note"
   | "create_shape"
+  | "create_shapes"
   | "create_frame"
   | "create_frames"
   | "create_connector"

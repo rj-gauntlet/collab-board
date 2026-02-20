@@ -43,6 +43,27 @@ gcloud config set project collab-board-rj
 gcloud auth application-default login
 ```
 
+### If rollouts fail with `invoker_iam_disabled` (Firebase App Hosting)
+
+When a rollout fails with:
+
+**"Changes to invoker_iam_disabled require run.services.setIamPolicy permissions"**
+
+the identity that deploys to Cloud Run doesn’t have permission to set “Allow public access” on the service. Fix it in Google Cloud:
+
+1. **Grant Cloud Run Admin to the right principal**
+   - Open [Google Cloud Console → IAM & Admin → IAM](https://console.cloud.google.com/iam-admin/iam?project=collab-board-rj).
+   - Find the principal that runs the rollout. This is often:
+     - **Your user** (e.g. `your-email@gmail.com`) if you trigger rollouts from the Firebase Console, or
+     - **Cloud Build service account**: `810747159790@cloudbuild.gserviceaccount.com` (use your project’s numeric ID if different).
+   - Click **Edit** (pencil) for that principal (or **Grant Access** to add it).
+   - Add role: **Cloud Run Admin** (`roles/run.admin`).
+   - Save.
+
+2. **Retry the rollout** in [Firebase Console → App Hosting](https://console.firebase.google.com/project/collab-board-rj/apphosting) (e.g. “Create rollout” or re-run the failed rollout).
+
+**Alternative (one-time, same project):** If you have Owner/Editor, you can allow public access on the existing Cloud Run service so the app is public, but **future rollouts** will still try to set IAM and can fail unless the deploy identity has `run.services.setIamPolicy`. Granting **Cloud Run Admin** to that identity is the reliable fix.
+
 ---
 
 ## 3. Environment variables in production

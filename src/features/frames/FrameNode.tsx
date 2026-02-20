@@ -4,8 +4,8 @@ import React, { useRef, useEffect, useCallback } from "react";
 import { Group, Rect, Text, Line, Transformer } from "react-konva";
 import Konva from "konva";
 import type { FrameElement } from "./types";
+import { FRAME_TITLE_BAR_HEIGHT } from "./types";
 
-const TITLE_HEIGHT = 28;
 const PADDING = 8;
 
 export type RequestEditTitleFn = (
@@ -138,14 +138,14 @@ export function FrameNode({
           x={0}
           y={0}
           width={frame.width}
-          height={TITLE_HEIGHT}
+          height={FRAME_TITLE_BAR_HEIGHT}
           fill="rgba(93, 64, 55, 0.07)"
           cornerRadius={[4, 4, 0, 0]}
           listening={false}
         />
         {/* Title / body separator */}
         <Line
-          points={[0, TITLE_HEIGHT, frame.width, TITLE_HEIGHT]}
+          points={[0, FRAME_TITLE_BAR_HEIGHT, frame.width, FRAME_TITLE_BAR_HEIGHT]}
           stroke={isSelected ? "#ff8f00" : "#d4b896"}
           strokeWidth={1}
           listening={false}
@@ -161,7 +161,7 @@ export function FrameNode({
         >
           <Rect
             width={frame.width - PADDING * 2}
-            height={TITLE_HEIGHT - PADDING}
+            height={FRAME_TITLE_BAR_HEIGHT - PADDING}
             listening={true}
             opacity={0}
           />
@@ -169,7 +169,7 @@ export function FrameNode({
             x={0}
             y={0}
             width={frame.width - PADDING * 2}
-            height={TITLE_HEIGHT - PADDING}
+            height={FRAME_TITLE_BAR_HEIGHT - PADDING}
             text={frame.title || "Double-click to add title"}
             fontSize={14}
             fontStyle="600"

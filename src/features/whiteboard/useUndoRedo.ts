@@ -29,15 +29,19 @@ export function useUndoRedo(onRestore: (snapshot: BoardSnapshot) => void) {
     futureRef.current = []; // clear redo stack on new action
   }, []);
 
-  const undo = useCallback(() => {
-    const past = pastRef.current;
-    if (past.length < 2) return; // need at least current + one prior
-    const current = past[past.length - 1];
-    const previous = past[past.length - 2];
-    futureRef.current = [current, ...futureRef.current];
-    pastRef.current = past.slice(0, -1);
-    onRestore(previous);
-  }, [onRestore]);
+  const undo = useCallback(
+    (getCurrentSnapshot?: () => BoardSnapshot) => {
+      const past = pastRef.current;
+      if (past.length < 1) return; // need at least one state to restore to
+      const previous = past[past.length - 1];
+      if (getCurrentSnapshot) {
+        futureRef.current = [getCurrentSnapshot(), ...futureRef.current];
+      }
+      pastRef.current = past.slice(0, -1);
+      onRestore(previous);
+    },
+    [onRestore]
+  );
 
   const redo = useCallback(() => {
     const future = futureRef.current;
@@ -48,7 +52,7 @@ export function useUndoRedo(onRestore: (snapshot: BoardSnapshot) => void) {
     onRestore(next);
   }, [onRestore]);
 
-  const canUndo = () => pastRef.current.length >= 2;
+  const canUndo = () => pastRef.current.length >= 1;
   const canRedo = () => futureRef.current.length > 0;
 
   return { push, undo, redo, canUndo, canRedo };

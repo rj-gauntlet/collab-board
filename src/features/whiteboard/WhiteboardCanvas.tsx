@@ -52,6 +52,7 @@ import {
   createDefaultFrame,
   persistFrame,
   deleteFrame,
+  FRAME_TITLE_BAR_HEIGHT,
 } from "@/features/frames";
 import { usePanZoom } from "@/features/pan-zoom";
 import {
@@ -73,6 +74,25 @@ import type { TextElement } from "@/features/text-elements";
 import type { FrameElement } from "@/features/frames";
 import type { ConnectorElement } from "@/features/connectors";
 import type { BoardStateSummary } from "@/features/ai-agent/board-agent-types";
+
+const FRAME_BODY_PADDING = 8;
+
+/** If (x,y) is inside a frame's title bar zone, return y adjusted to the content area below the title bar. */
+function clampYBelowFrameTitleBar(
+  x: number,
+  y: number,
+  frames: FrameElement[]
+): { x: number; y: number } {
+  let adjustedY = y;
+  for (const f of frames) {
+    const inFrame = x >= f.x && x < f.x + f.width && y >= f.y && y < f.y + f.height;
+    const inTitleBar = inFrame && y < f.y + FRAME_TITLE_BAR_HEIGHT;
+    if (inTitleBar) {
+      adjustedY = Math.max(adjustedY, f.y + FRAME_TITLE_BAR_HEIGHT + FRAME_BODY_PADDING);
+    }
+  }
+  return { x, y: adjustedY };
+}
 
 export interface WhiteboardCanvasHandle {
   getNotes: () => StickyNoteElement[];
@@ -328,14 +348,16 @@ export const WhiteboardCanvas = forwardRef<
 
   const { push: pushSnapshot, undo: undoAction, redo: redoAction } = useUndoRedo(handleRestore);
 
+  const getCurrentSnapshot = useCallback((): BoardSnapshot => ({
+    notes: notesRef.current,
+    shapes: shapesRef.current,
+    textElements: textElementsRef.current,
+    frames: framesRef.current,
+  }), []);
+
   const captureSnapshot = useCallback(() => {
-    pushSnapshot({
-      notes: notesRef.current,
-      shapes: shapesRef.current,
-      textElements: textElementsRef.current,
-      frames: framesRef.current,
-    });
-  }, [pushSnapshot]);
+    pushSnapshot(getCurrentSnapshot());
+  }, [pushSnapshot, getCurrentSnapshot]);
 
   const handleNoteUpdate = useCallback((note: StickyNoteElement) => {
     setLocalNoteOverrides((prev) => {
@@ -636,8 +658,9 @@ export const WhiteboardCanvas = forwardRef<
       for (const aiNote of aiNotes) {
         const x = aiNote.x ?? 100;
         const y = aiNote.y ?? 100 + offsetY;
+        const { x: x2, y: y2 } = clampYBelowFrameTitleBar(x, y, framesRef.current);
         offsetY += (aiNote.height ?? 120) + 20;
-        const note = createDefaultNote(x, y, userId);
+        const note = createDefaultNote(x2, y2, userId);
         const fullNote: StickyNoteElement = {
           ...note,
           text: aiNote.text,
@@ -720,8 +743,9 @@ export const WhiteboardCanvas = forwardRef<
       for (const item of items) {
         const x = item.x ?? 100;
         const y = item.y ?? 100;
+        const { x: x2, y: y2 } = clampYBelowFrameTitleBar(x, y, framesRef.current);
         const kind = item.shapeType === "circle" ? "circle" : item.shapeType === "triangle" ? "triangle" : "rect";
-        const shape = createDefaultShape(x, y, userId, kind);
+        const shape = createDefaultShape(x2, y2, userId, kind);
         const full: ShapeElement = {
           ...shape,
           ...(item.fill != null && { fill: item.fill }),
@@ -824,12 +848,18 @@ export const WhiteboardCanvas = forwardRef<
 
   const updateElementsByAgent = useCallback(
     (updates: Array<{ id: string; text?: string; title?: string; color?: string; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      const frames = framesRef.current;
       for (const u of updates) {
         const note = notesRef.current.find((n) => n.id === u.id);
         if (note) {
           const updated = { ...note, ...u, updatedAt: Date.now() };
           if (u.text !== undefined) (updated as StickyNoteElement).text = u.text;
           if (u.color !== undefined) (updated as StickyNoteElement).color = u.color;
+          if (u.x != null && u.y != null) {
+            const clamped = clampYBelowFrameTitleBar(updated.x, updated.y, frames);
+            (updated as StickyNoteElement).x = clamped.x;
+            (updated as StickyNoteElement).y = clamped.y;
+          }
           handleNoteUpdate(updated as StickyNoteElement);
           persistNote(boardId, updated as StickyNoteElement).catch(console.error);
           continue;
@@ -838,6 +868,11 @@ export const WhiteboardCanvas = forwardRef<
         if (shape) {
           const updated = { ...shape, ...u, updatedAt: Date.now() };
           if (u.fill !== undefined) (updated as ShapeElement).fill = u.fill;
+          if (u.x != null && u.y != null) {
+            const clamped = clampYBelowFrameTitleBar(updated.x, updated.y, frames);
+            (updated as ShapeElement).x = clamped.x;
+            (updated as ShapeElement).y = clamped.y;
+          }
           handleShapeUpdate(updated as ShapeElement);
           persistShape(boardId, updated as ShapeElement).catch(console.error);
           continue;
@@ -847,6 +882,11 @@ export const WhiteboardCanvas = forwardRef<
           const updated = { ...text, ...u, updatedAt: Date.now() };
           if (u.text !== undefined) (updated as TextElement).text = u.text;
           if (u.fill !== undefined) (updated as TextElement).fill = u.fill;
+          if (u.x != null && u.y != null) {
+            const clamped = clampYBelowFrameTitleBar(updated.x, updated.y, frames);
+            (updated as TextElement).x = clamped.x;
+            (updated as TextElement).y = clamped.y;
+          }
           handleTextUpdate(updated as TextElement);
           persistTextElement(boardId, updated as TextElement).catch(console.error);
           continue;
@@ -1359,7 +1399,7 @@ export const WhiteboardCanvas = forwardRef<
         const stage = stageRef.current;
         if (stage) exportBoardAsPng(stage);
       },
-      undo: undoAction,
+      undo: () => undoAction(getCurrentSnapshot),
       redo: redoAction,
       showShortcuts: () => setShowShortcuts(true),
     }),
@@ -1379,6 +1419,7 @@ export const WhiteboardCanvas = forwardRef<
       handleDeleteSelection,
       undoAction,
       redoAction,
+      getCurrentSnapshot,
     ]
   );
 
@@ -1643,7 +1684,7 @@ export const WhiteboardCanvas = forwardRef<
       }
       if (ctrl && e.key === "z") {
         e.preventDefault();
-        undoAction();
+        undoAction(getCurrentSnapshot);
       }
       if (ctrl && (e.key === "y" || (e.shiftKey && e.key === "Z"))) {
         e.preventDefault();
@@ -1652,7 +1693,7 @@ export const WhiteboardCanvas = forwardRef<
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds.size, selectedConnectorId, boardId, clipboardNotes.length, clipboardShapes.length, clipboardTextElements.length, clipboardFrames.length, handleDuplicate, handleCopy, handlePaste, handleDeleteSelection, undoAction, redoAction]);
+  }, [selectedIds.size, selectedConnectorId, boardId, clipboardNotes.length, clipboardShapes.length, clipboardTextElements.length, clipboardFrames.length, handleDuplicate, handleCopy, handlePaste, handleDeleteSelection, undoAction, redoAction, getCurrentSnapshot]);
 
   return (
     <div

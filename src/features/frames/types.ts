@@ -2,6 +2,9 @@
  * Frames - visual containers to group/organize content areas
  */
 
+/** Height of the frame title bar (content area starts below this). Used by canvas and agent. */
+export const FRAME_TITLE_BAR_HEIGHT = 28;
+
 export interface FrameElement {
   id: string;
   type: "frame";

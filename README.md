@@ -34,6 +34,15 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Testing
+
+- **Unit tests (Jest):** `npm test` — runs tests in `src/**/__tests__/**/*.test.(ts|tsx)`.
+- **Code coverage:** `npm run test:coverage` — runs Jest with coverage; report in `coverage/` (HTML in `coverage/lcov-report/index.html`).
+- **E2E (Playwright):** `npm run test:e2e` — runs e2e tests in `e2e/`. Starts the dev server and uses Chromium.
+- **E2E with HTML report:** `npm run test:e2e:coverage` — same as above but writes an HTML report to `playwright-report/` for inspecting runs.
+
+**CollabBot PRD capabilities** are covered by `e2e/collab-bot-prd.spec.ts`: creation (sticky note, shape, frame), manipulation (move, update color, resize frame to fit), layout (grid, 2×3 grid, space evenly), complex templates (retrospective, SWOT), and delete. Each test creates a new board so it runs in CI without a fixed board ID.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
