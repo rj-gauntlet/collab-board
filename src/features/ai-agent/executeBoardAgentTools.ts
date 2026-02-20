@@ -64,6 +64,19 @@ export function executeBoardAgentTools(
           }
           break;
         }
+        case "create_frames": {
+          const items = inv.args.items as Array<{
+            title: string;
+            x?: number;
+            y?: number;
+            width?: number;
+            height?: number;
+          }>;
+          if (Array.isArray(items) && items.length > 0) {
+            handle.createFramesFromAI(items);
+          }
+          break;
+        }
         case "create_connector": {
           const fromId = inv.args.fromId as string;
           const toId = inv.args.toId as string;
@@ -118,6 +131,23 @@ export function executeBoardAgentTools(
           const spacing = (inv.args.spacing as number) ?? 24;
           if (Array.isArray(ids) && ids.length > 0) {
             handle.arrangeGridByAgent(ids, columns, spacing);
+          }
+          break;
+        }
+        case "resize_frame_to_fit": {
+          const frameId = inv.args.frameId as string;
+          const padding = (inv.args.padding as number) ?? 16;
+          if (frameId) {
+            handle.resizeFrameToFitByAgent(frameId, padding);
+          }
+          break;
+        }
+        case "distribute_elements": {
+          const ids = inv.args.ids as string[];
+          const direction = inv.args.direction as "horizontal" | "vertical";
+          const spacing = (inv.args.spacing as number) ?? 24;
+          if (Array.isArray(ids) && ids.length > 0 && (direction === "horizontal" || direction === "vertical")) {
+            handle.distributeElementsByAgent(ids, direction, spacing);
           }
           break;
         }

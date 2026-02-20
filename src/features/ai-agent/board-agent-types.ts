@@ -3,9 +3,10 @@
  * and tool argument shapes (for type-safe execution on the client).
  */
 
-export interface BoardStateSummary {
+/** Bounding-box elements (notes, shapes, text, frames) */
+export interface BoardStateSummaryBounded {
   id: string;
-  type: "sticky-note" | "shape" | "text" | "frame" | "connector";
+  type: "sticky-note" | "shape" | "text" | "frame";
   text?: string;
   title?: string;
   x: number;
@@ -15,9 +16,17 @@ export interface BoardStateSummary {
   color?: string;
   fill?: string;
   kind?: string;
-  fromId?: string;
-  toId?: string;
 }
+
+/** Connectors have from/to, not a bounding box */
+export interface BoardStateSummaryConnector {
+  id: string;
+  type: "connector";
+  fromId: string;
+  toId: string;
+}
+
+export type BoardStateSummary = BoardStateSummaryBounded | BoardStateSummaryConnector;
 
 /** Tool: create_sticky_note */
 export interface CreateStickyNoteArgs {
@@ -46,6 +55,17 @@ export interface CreateFrameArgs {
   y?: number;
   width?: number;
   height?: number;
+}
+
+/** Tool: create_frames — multiple frames in one call */
+export interface CreateFramesArgs {
+  items: Array<{
+    title: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  }>;
 }
 
 /** Tool: create_connector */
@@ -90,12 +110,28 @@ export interface ArrangeGridArgs {
   spacing?: number;
 }
 
+/** Tool: resize_frame_to_fit — resize a frame to the bounding box of elements inside it */
+export interface ResizeFrameToFitArgs {
+  frameId: string;
+  padding?: number;
+}
+
+/** Tool: distribute_elements — space elements evenly in a row or column */
+export interface DistributeElementsArgs {
+  ids: string[];
+  direction: "horizontal" | "vertical";
+  spacing?: number;
+}
+
 export type BoardAgentToolName =
   | "create_sticky_note"
   | "create_shape"
   | "create_frame"
+  | "create_frames"
   | "create_connector"
   | "move_elements"
   | "update_elements"
   | "delete_elements"
-  | "arrange_grid";
+  | "arrange_grid"
+  | "resize_frame_to_fit"
+  | "distribute_elements";

@@ -134,6 +134,7 @@ export function BoardAgentChat({
           placeholder="Add a sticky note…"
           className="w-full rounded-md border border-[#ffe0b2] bg-white px-3 py-2 text-sm text-[#5d4037] placeholder-[#5d4037]/50 focus:border-[#ff8f00] focus:outline-none focus:ring-1 focus:ring-[#ff8f00]"
           disabled={status === "streaming"}
+          data-testid="board-agent-input"
         />
       </form>
     </div>

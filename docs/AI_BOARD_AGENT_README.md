@@ -74,6 +74,8 @@ So we send a **compact summary** of the board (id, type, text/title, x, y, width
 | **Canvas methods used by the agent** | `src/features/whiteboard/WhiteboardCanvas.tsx` (e.g. `getBoardState`, `createNotesFromAI`, `moveElementsByAgent`, …) |
 | **Wiring on the board page** | `src/app/[boardId]/page.tsx` (Agent button, render `BoardAgentChat` with `canvasRef` and `getBoardState`) |
 
+**Available tools:** `create_sticky_note`, `create_shape`, `create_frame`, `create_frames`, `create_connector`, `move_elements`, `update_elements`, `delete_elements`, `arrange_grid`, `resize_frame_to_fit`, `distribute_elements`.
+
 ---
 
 ## How Tool Calling Works (A Bit More Detail)

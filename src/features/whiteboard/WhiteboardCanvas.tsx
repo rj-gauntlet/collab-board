@@ -87,6 +87,8 @@ export interface WhiteboardCanvasHandle {
   updateElementsByAgent: (updates: Array<{ id: string; text?: string; title?: string; color?: string; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => void;
   deleteElementsByAgent: (ids: string[]) => void;
   arrangeGridByAgent: (ids: string[], columns?: number, spacing?: number) => void;
+  resizeFrameToFitByAgent: (frameId: string, padding?: number) => void;
+  distributeElementsByAgent: (ids: string[], direction: "horizontal" | "vertical", spacing?: number) => void;
   clearCanvas: () => Promise<void>;
   deleteSelection: () => void;
   exportImage: () => void;
@@ -915,6 +917,90 @@ export const WhiteboardCanvas = forwardRef<
     [moveElementsByAgent]
   );
 
+  const resizeFrameToFitByAgent = useCallback(
+    (frameId: string, padding = 16) => {
+      const frame = framesRef.current.find((f) => f.id === frameId);
+      if (!frame) return;
+      const fx = frame.x;
+      const fy = frame.y;
+      const fRight = frame.x + frame.width;
+      const fBottom = frame.y + frame.height;
+      const isInside = (x: number, y: number, w: number, h: number) => {
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        return cx >= fx && cx <= fRight && cy >= fy && cy <= fBottom;
+      };
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const expand = (x: number, y: number, w: number, h: number) => {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x + w > maxX) maxX = x + w;
+        if (y + h > maxY) maxY = y + h;
+      };
+      for (const n of notesRef.current) {
+        if (isInside(n.x, n.y, n.width, n.height)) expand(n.x, n.y, n.width, n.height);
+      }
+      for (const s of shapesRef.current) {
+        if (isInside(s.x, s.y, s.width, s.height)) expand(s.x, s.y, s.width, s.height);
+      }
+      for (const t of textElementsRef.current) {
+        const h = t.fontSize * 2;
+        if (isInside(t.x, t.y, t.width, h)) expand(t.x, t.y, t.width, h);
+      }
+      if (!isFinite(minX)) return;
+      const x = minX - padding;
+      const y = minY - padding;
+      const width = maxX - minX + 2 * padding;
+      const height = maxY - minY + 2 * padding;
+      const updated: FrameElement = { ...frame, x, y, width, height, updatedAt: Date.now() };
+      handleFrameUpdate(updated);
+      persistFrame(boardId, updated).catch(console.error);
+    },
+    [boardId, handleFrameUpdate]
+  );
+
+  const distributeElementsByAgent = useCallback(
+    (ids: string[], direction: "horizontal" | "vertical", spacing = 24) => {
+      const elements: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+      for (const n of notesRef.current) {
+        if (ids.includes(n.id)) elements.push({ id: n.id, x: n.x, y: n.y, width: n.width, height: n.height });
+      }
+      for (const s of shapesRef.current) {
+        if (ids.includes(s.id)) elements.push({ id: s.id, x: s.x, y: s.y, width: s.width, height: s.height });
+      }
+      for (const t of textElementsRef.current) {
+        if (ids.includes(t.id)) elements.push({ id: t.id, x: t.x, y: t.y, width: t.width, height: 24 });
+      }
+      for (const f of framesRef.current) {
+        if (ids.includes(f.id)) elements.push({ id: f.id, x: f.x, y: f.y, width: f.width, height: f.height });
+      }
+      if (elements.length === 0) return;
+      const sorted = [...elements].sort((a, b) =>
+        direction === "horizontal" ? a.x - b.x : a.y - b.y
+      );
+      if (direction === "horizontal") {
+        const totalWidth = sorted.reduce((acc, el) => acc + el.width, 0) + (sorted.length - 1) * spacing;
+        const startX = Math.min(...sorted.map((e) => e.x));
+        let xOffset = 0;
+        for (const el of sorted) {
+          const targetX = startX + xOffset;
+          moveElementsByAgent([el.id], targetX - el.x, 0);
+          xOffset += el.width + spacing;
+        }
+      } else {
+        const totalHeight = sorted.reduce((acc, el) => acc + el.height, 0) + (sorted.length - 1) * spacing;
+        const startY = Math.min(...sorted.map((e) => e.y));
+        let yOffset = 0;
+        for (const el of sorted) {
+          const targetY = startY + yOffset;
+          moveElementsByAgent([el.id], 0, targetY - el.y);
+          yOffset += el.height + spacing;
+        }
+      }
+    },
+    [moveElementsByAgent]
+  );
+
   const persistedNoteIds = new Set(persistedNotes.map((n) => n.id));
   useEffect(() => {
     setOptimisticNotes((prev) => prev.filter((n) => !persistedNoteIds.has(n.id)));
@@ -1265,6 +1351,8 @@ export const WhiteboardCanvas = forwardRef<
       updateElementsByAgent,
       deleteElementsByAgent,
       arrangeGridByAgent,
+      resizeFrameToFitByAgent,
+      distributeElementsByAgent,
       clearCanvas,
       deleteSelection: handleDeleteSelection,
       exportImage: () => {
@@ -1285,6 +1373,8 @@ export const WhiteboardCanvas = forwardRef<
       updateElementsByAgent,
       deleteElementsByAgent,
       arrangeGridByAgent,
+      resizeFrameToFitByAgent,
+      distributeElementsByAgent,
       clearCanvas,
       handleDeleteSelection,
       undoAction,

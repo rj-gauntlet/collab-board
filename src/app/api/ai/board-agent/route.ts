@@ -11,10 +11,14 @@ You receive a JSON snapshot of the current board state (elements with id, type, 
 All coordinates and sizes are in board space (not screen pixels). Use sensible values: e.g. x,y starting around 100-200, spacing 20-40px.
 Default sticky note size: 160x120. Default frame: 320x200. Default shape: 120x80.
 When creating multiple items (e.g. grid, template), place them so they don't overlap and use consistent spacing.
+To create frames, always use create_frames (with an items array). One frame = one item; multiple columns = multiple items with different title and x (e.g. x: 100, 420, 740).
+For multiple frames or columns (e.g. "three columns", "retrospective with What Went Well, What Didn't, Action Items", "six sections"), always use create_frames with an items array that has one entry per frame—e.g. 3 columns means 3 items, 6 frames means 6 items. Use different x positions so frames sit side by side (e.g. x: 100, 420, 740 for three).
 When the user refers to "these" or "selected" elements without IDs, use the most recently mentioned or created elements, or ask for clarification.
 Colors can be hex (e.g. #fef08a) or names (yellow, blue, pink, green, etc.).
 
-IMPORTANT: You MUST use the provided tools to make changes. Do not only describe what you would do—call the appropriate tool (e.g. create_sticky_note, create_shape) so the board is actually updated. After calling the tool(s), you may briefly confirm what you did in one sentence.`;
+IMPORTANT: You MUST use the provided tools to make changes. Do not only describe what you would do—call the appropriate tool (e.g. create_sticky_note, create_shape) so the board is actually updated. After calling the tool(s), you may briefly confirm what you did in one sentence.
+
+Use resize_frame_to_fit when the user asks to resize a frame to fit its contents. Use distribute_elements with direction "horizontal" or "vertical" when the user asks to space elements evenly, distribute them in a row or column, or align with equal gaps.`;
 
 function buildSystemPrompt(boardState: BoardStateSummary[]): string {
   const stateJson =
@@ -123,7 +127,8 @@ export async function POST(req: Request) {
           execute: async () => "Done.",
         }),
         create_frame: tool({
-          description: "Create a frame (labeled container). Optional position and size.",
+          description:
+            "Create a single frame (labeled container). Use for one frame only. For multiple frames or columns use create_frames instead.",
           parameters: jsonSchema<{
             title: string;
             x?: number;
@@ -140,6 +145,39 @@ export async function POST(req: Request) {
               height: { type: "number" },
             },
             required: ["title"],
+          }),
+          execute: async () => "Done.",
+        }),
+        create_frames: tool({
+          description:
+            "Create multiple frames in one call. Pass items: an array of objects, one per frame. Each object has title (required) and optional x, y, width, height. The number of items must match the number of frames requested (e.g. 3 columns = 3 items, 6 frames = 6 items). Use different x values so frames sit side by side (e.g. 100, 420, 740 for 3; add ~320 per frame). Use this whenever the user asks for more than one frame or column.",
+          parameters: jsonSchema<{
+            items: Array<{
+              title: string;
+              x?: number;
+              y?: number;
+              width?: number;
+              height?: number;
+            }>;
+          }>({
+            type: "object",
+            properties: {
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    x: { type: "number" },
+                    y: { type: "number" },
+                    width: { type: "number" },
+                    height: { type: "number" },
+                  },
+                  required: ["title"],
+                },
+              },
+            },
+            required: ["items"],
           }),
           execute: async () => "Done.",
         }),
@@ -245,6 +283,37 @@ export async function POST(req: Request) {
               spacing: { type: "number" },
             },
             required: ["ids"],
+          }),
+          execute: async () => "Done.",
+        }),
+        resize_frame_to_fit: tool({
+          description:
+            "Resize a frame to fit its contents. Use when the user asks to resize a frame to fit its contents or to fit the elements inside it. Elements are considered inside if their center is within the frame bounds.",
+          parameters: jsonSchema<{ frameId: string; padding?: number }>({
+            type: "object",
+            properties: {
+              frameId: { type: "string", description: "ID of the frame to resize" },
+              padding: { type: "number", description: "Padding around contents in pixels (default 16)" },
+            },
+            required: ["frameId"],
+          }),
+          execute: async () => "Done.",
+        }),
+        distribute_elements: tool({
+          description:
+            "Space elements evenly in a row (horizontal) or column (vertical). Use when the user asks to space elements evenly, distribute them in a line, or align with equal gaps.",
+          parameters: jsonSchema<{
+            ids: string[];
+            direction: "horizontal" | "vertical";
+            spacing?: number;
+          }>({
+            type: "object",
+            properties: {
+              ids: { type: "array", items: { type: "string" } },
+              direction: { type: "string", enum: ["horizontal", "vertical"] },
+              spacing: { type: "number", description: "Gap between elements in pixels (default 24)" },
+            },
+            required: ["ids", "direction"],
           }),
           execute: async () => "Done.",
         }),

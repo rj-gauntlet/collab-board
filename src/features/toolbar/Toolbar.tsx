@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   StickyNote,
   Square,
@@ -18,6 +18,8 @@ import {
   Grid3X3,
   Magnet,
   Sparkles,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import type { Tool } from "./types";
 
@@ -53,13 +55,41 @@ export function Toolbar({
   onCluster,
   clusterLoading = false,
 }: ToolbarProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (collapsed) {
+    return (
+      <div className="font-sans flex flex-col items-center px-1">
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="flex flex-col items-center gap-0.5 rounded-md px-2 py-2 text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
+          title="Expand toolbar"
+          aria-label="Expand toolbar"
+        >
+          <PanelLeft size={20} />
+          <span className="text-xs font-medium">Tools</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="font-sans flex flex-col gap-1 px-2">
+    <div className="font-sans flex flex-col gap-1 px-1">
+      <button
+        type="button"
+        onClick={() => setCollapsed(true)}
+        className="flex items-center justify-center rounded-md p-1.5 text-[#5d4037] transition-colors hover:bg-[#ffe0b2] self-start"
+        title="Collapse toolbar"
+        aria-label="Collapse toolbar"
+      >
+        <PanelLeftClose size={18} />
+      </button>
       {hasSelection && onDeleteSelection && (
         <button
           type="button"
           onClick={onDeleteSelection}
-          className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50"
+          className="flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50"
           title="Delete selected"
         >
           <Trash2 size={18} />
@@ -69,7 +99,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("hand")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "hand"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -82,7 +112,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("select")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "select"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -95,7 +125,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("connector")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "connector"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -108,7 +138,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("text")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "text"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -121,7 +151,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("frame")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "frame"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -134,7 +164,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("sticky-note")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "sticky-note"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -147,7 +177,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("rect")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "rect"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -160,7 +190,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("triangle")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "triangle"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -173,7 +203,7 @@ export function Toolbar({
       <button
         type="button"
         onClick={() => onToolChange("circle")}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
           activeTool === "circle"
             ? "bg-[#ff8f00] text-white"
             : "text-[#5d4037] hover:bg-[#ffe0b2]"
@@ -192,7 +222,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onUndo}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
               title="Undo (Ctrl+Z)"
             >
               <Undo2 size={18} />
@@ -203,7 +233,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onRedo}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
               title="Redo (Ctrl+Y)"
             >
               <Redo2 size={18} />
@@ -214,7 +244,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onExport}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
               title="Export as PNG"
             >
               <Download size={18} />
@@ -225,7 +255,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onGridToggle}
-              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
                 gridVisible ? "bg-[#ff8f00] text-white" : "text-[#5d4037] hover:bg-[#ffe0b2]"
               }`}
               title="Toggle grid"
@@ -238,7 +268,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onSnapToggle}
-              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
                 snapEnabled ? "bg-[#ff8f00] text-white" : "text-[#5d4037] hover:bg-[#ffe0b2]"
               }`}
               title="Snap to grid"
@@ -252,7 +282,7 @@ export function Toolbar({
               type="button"
               onClick={onCluster}
               disabled={clusterLoading}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2] disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2] disabled:opacity-60 disabled:cursor-not-allowed"
               title="Cluster sticky note text into themes (AI)"
             >
               {clusterLoading ? (
