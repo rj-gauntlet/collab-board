@@ -100,6 +100,7 @@ export interface WhiteboardCanvasHandle {
   createNotesFromAI: (
     notes: Array<{ text: string; color?: string; x?: number; y?: number; width?: number; height?: number }>
   ) => void;
+  createStickyNotesGridFromAI: (rows: number, columns: number, options?: { labels?: string[]; startX?: number; startY?: number; spacing?: number }) => void;
   createShapesFromAI: (items: Array<{ shapeType: "rect" | "circle" | "triangle"; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => void;
   createFramesFromAI: (items: Array<{ title: string; x?: number; y?: number; width?: number; height?: number }>) => void;
   createConnectorsFromAI: (items: Array<{ fromId: string; toId: string; label?: string; style?: "line" | "arrow" }>) => void;
@@ -273,6 +274,7 @@ export const WhiteboardCanvas = forwardRef<
     label: string;
   } | null>(null);
   const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
+  const [restoredSnapshot, setRestoredSnapshot] = useState<BoardSnapshot | null>(null);
 
   const {
     scale,
@@ -320,6 +322,37 @@ export const WhiteboardCanvas = forwardRef<
 
   // ── Undo / Redo (must be defined before any callback that calls captureSnapshot) ──
   const handleRestore = useCallback((snapshot: BoardSnapshot) => {
+    const currentNotes = notesRef.current;
+    const currentShapes = shapesRef.current;
+    const currentText = textElementsRef.current;
+    const currentFrames = framesRef.current;
+    const snapshotNoteIds = new Set(snapshot.notes.map((n) => n.id));
+    const snapshotShapeIds = new Set(snapshot.shapes.map((s) => s.id));
+    const snapshotTextIds = new Set(snapshot.textElements.map((t) => t.id));
+    const snapshotFrameIds = new Set(snapshot.frames.map((f) => f.id));
+
+    currentNotes.forEach((n) => {
+      if (!snapshotNoteIds.has(n.id)) deleteNote(boardId, n.id).catch(console.error);
+    });
+    currentShapes.forEach((s) => {
+      if (!snapshotShapeIds.has(s.id)) deleteShape(boardId, s.id).catch(console.error);
+    });
+    currentText.forEach((t) => {
+      if (!snapshotTextIds.has(t.id)) deleteTextElement(boardId, t.id).catch(console.error);
+    });
+    currentFrames.forEach((f) => {
+      if (!snapshotFrameIds.has(f.id)) deleteFrame(boardId, f.id).catch(console.error);
+    });
+
+    snapshot.notes.forEach((n) => persistNote(boardId, n).catch(console.error));
+    snapshot.shapes.forEach((s) => persistShape(boardId, s).catch(console.error));
+    snapshot.textElements.forEach((t) => persistTextElement(boardId, t).catch(console.error));
+    snapshot.frames.forEach((f) => persistFrame(boardId, f).catch(console.error));
+
+    setOptimisticNotes([]);
+    setOptimisticShapes([]);
+    setOptimisticTextElements([]);
+    setOptimisticFrames([]);
     setLocalNoteOverrides(() => {
       const m = new Map<string, StickyNoteElement>();
       snapshot.notes.forEach((n) => m.set(n.id, n));
@@ -340,10 +373,7 @@ export const WhiteboardCanvas = forwardRef<
       snapshot.frames.forEach((f) => m.set(f.id, f));
       return m;
     });
-    snapshot.notes.forEach((n) => persistNote(boardId, n).catch(console.error));
-    snapshot.shapes.forEach((s) => persistShape(boardId, s).catch(console.error));
-    snapshot.textElements.forEach((t) => persistTextElement(boardId, t).catch(console.error));
-    snapshot.frames.forEach((f) => persistFrame(boardId, f).catch(console.error));
+    setRestoredSnapshot(snapshot);
   }, [boardId]);
 
   const { push: pushSnapshot, undo: undoAction, redo: redoAction } = useUndoRedo(handleRestore);
@@ -356,6 +386,7 @@ export const WhiteboardCanvas = forwardRef<
   }), []);
 
   const captureSnapshot = useCallback(() => {
+    setRestoredSnapshot(null);
     pushSnapshot(getCurrentSnapshot());
   }, [pushSnapshot, getCurrentSnapshot]);
 
@@ -547,6 +578,7 @@ export const WhiteboardCanvas = forwardRef<
           });
         } else {
           const asFrame = framesRef.current.some((f) => f.id === id);
+          const asConnector = connectorsRef.current.some((c) => c.id === id);
           if (asFrame) {
             deleteFrame(boardId, id).catch((err) =>
               console.error("Failed to delete frame:", err)
@@ -557,6 +589,11 @@ export const WhiteboardCanvas = forwardRef<
               next.delete(id);
               return next;
             });
+          } else if (asConnector) {
+            deleteConnector(boardId, id).catch((err) =>
+              console.error("Failed to delete connector:", err)
+            );
+            setSelectedConnectorId((prev) => (prev === id ? null : prev));
           }
         }
       }
@@ -654,11 +691,13 @@ export const WhiteboardCanvas = forwardRef<
 
   const createNotesFromAI = useCallback(
     (aiNotes: Array<{ text: string; color?: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      const frames = framesRef.current;
       let offsetY = 0;
+      const newNotes: StickyNoteElement[] = [];
       for (const aiNote of aiNotes) {
         const x = aiNote.x ?? 100;
         const y = aiNote.y ?? 100 + offsetY;
-        const { x: x2, y: y2 } = clampYBelowFrameTitleBar(x, y, framesRef.current);
+        const { x: x2, y: y2 } = clampYBelowFrameTitleBar(x, y, frames);
         offsetY += (aiNote.height ?? 120) + 20;
         const note = createDefaultNote(x2, y2, userId);
         const fullNote: StickyNoteElement = {
@@ -668,7 +707,11 @@ export const WhiteboardCanvas = forwardRef<
           ...(aiNote.width != null && { width: aiNote.width }),
           ...(aiNote.height != null && { height: aiNote.height }),
         };
-        setOptimisticNotes((prev) => [...prev, fullNote]);
+        newNotes.push(fullNote);
+      }
+      if (newNotes.length === 0) return;
+      setOptimisticNotes((prev) => [...prev, ...newNotes]);
+      for (const fullNote of newNotes) {
         persistNote(boardId, fullNote).catch((err) => {
           console.error("Failed to create AI note:", err);
           setOptimisticNotes((prev) => prev.filter((n) => n.id !== fullNote.id));
@@ -678,7 +721,49 @@ export const WhiteboardCanvas = forwardRef<
     [boardId, userId]
   );
 
+  const NOTE_GRID_WIDTH = 160;
+  const NOTE_GRID_HEIGHT = 120;
+  const DEFAULT_GRID_SPACING = 24;
+
+  const createStickyNotesGridFromAI = useCallback(
+    (rows: number, columns: number, options?: { labels?: string[]; startX?: number; startY?: number; spacing?: number }) => {
+      const startX = options?.startX ?? 100;
+      const startY = options?.startY ?? 100;
+      const spacing = options?.spacing ?? DEFAULT_GRID_SPACING;
+      const labels = options?.labels;
+      const stepX = NOTE_GRID_WIDTH + spacing;
+      const stepY = NOTE_GRID_HEIGHT + spacing;
+      const items: Array<{ text: string; x: number; y: number; width: number; height: number }> = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < columns; c++) {
+          const i = r * columns + c;
+          const text = Array.isArray(labels) && labels[i] !== undefined ? String(labels[i]) : "";
+          items.push({
+            text,
+            x: startX + c * stepX,
+            y: startY + r * stepY,
+            width: NOTE_GRID_WIDTH,
+            height: NOTE_GRID_HEIGHT,
+          });
+        }
+      }
+      if (items.length > 0) {
+        createNotesFromAI(items);
+      }
+    },
+    [createNotesFromAI]
+  );
+
   const getBoardState = useCallback((): BoardStateSummary[] => {
+    const frames = framesRef.current;
+    const isInsideFrame = (cx: number, cy: number, frame: FrameElement) =>
+      cx >= frame.x && cx <= frame.x + frame.width && cy >= frame.y && cy <= frame.y + frame.height;
+    const getParentFrameId = (x: number, y: number, w: number, h: number): string | undefined => {
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      return frames.find((f) => isInsideFrame(cx, cy, f))?.id;
+    };
+
     const summaries: BoardStateSummary[] = [];
     for (const n of notesRef.current) {
       summaries.push({
@@ -690,6 +775,7 @@ export const WhiteboardCanvas = forwardRef<
         width: n.width,
         height: n.height,
         color: n.color,
+        parentFrameId: getParentFrameId(n.x, n.y, n.width, n.height),
       });
     }
     for (const s of shapesRef.current) {
@@ -702,9 +788,11 @@ export const WhiteboardCanvas = forwardRef<
         height: s.height,
         fill: s.fill,
         kind: s.kind,
+        parentFrameId: getParentFrameId(s.x, s.y, s.width, s.height),
       });
     }
     for (const t of textElementsRef.current) {
+      const textH = 24;
       summaries.push({
         id: t.id,
         type: "text",
@@ -712,11 +800,12 @@ export const WhiteboardCanvas = forwardRef<
         x: t.x,
         y: t.y,
         width: t.width,
-        height: 24,
+        height: textH,
         color: t.fill,
+        parentFrameId: getParentFrameId(t.x, t.y, t.width, textH),
       });
     }
-    for (const f of framesRef.current) {
+    for (const f of frames) {
       summaries.push({
         id: f.id,
         type: "frame",
@@ -740,10 +829,12 @@ export const WhiteboardCanvas = forwardRef<
 
   const createShapesFromAI = useCallback(
     (items: Array<{ shapeType: "rect" | "circle" | "triangle"; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      const frames = framesRef.current;
+      const newShapes: ShapeElement[] = [];
       for (const item of items) {
         const x = item.x ?? 100;
         const y = item.y ?? 100;
-        const { x: x2, y: y2 } = clampYBelowFrameTitleBar(x, y, framesRef.current);
+        const { x: x2, y: y2 } = clampYBelowFrameTitleBar(x, y, frames);
         const kind = item.shapeType === "circle" ? "circle" : item.shapeType === "triangle" ? "triangle" : "rect";
         const shape = createDefaultShape(x2, y2, userId, kind);
         const full: ShapeElement = {
@@ -752,7 +843,11 @@ export const WhiteboardCanvas = forwardRef<
           ...(item.width != null && { width: item.width }),
           ...(item.height != null && { height: item.height }),
         };
-        setOptimisticShapes((prev) => [...prev, full]);
+        newShapes.push(full);
+      }
+      if (newShapes.length === 0) return;
+      setOptimisticShapes((prev) => [...prev, ...newShapes]);
+      for (const full of newShapes) {
         persistShape(boardId, full).catch((err) => {
           console.error("Failed to create AI shape:", err);
           setOptimisticShapes((prev) => prev.filter((s) => s.id !== full.id));
@@ -764,6 +859,7 @@ export const WhiteboardCanvas = forwardRef<
 
   const createFramesFromAI = useCallback(
     (items: Array<{ title: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      const newFrames: FrameElement[] = [];
       for (const item of items) {
         const x = item.x ?? 100;
         const y = item.y ?? 100;
@@ -774,7 +870,11 @@ export const WhiteboardCanvas = forwardRef<
           ...(item.width != null && { width: item.width }),
           ...(item.height != null && { height: item.height }),
         };
-        setOptimisticFrames((prev) => [...prev, full]);
+        newFrames.push(full);
+      }
+      if (newFrames.length === 0) return;
+      setOptimisticFrames((prev) => [...prev, ...newFrames]);
+      for (const full of newFrames) {
         persistFrame(boardId, full).catch((err) => {
           console.error("Failed to create AI frame:", err);
           setOptimisticFrames((prev) => prev.filter((f) => f.id !== full.id));
@@ -1109,86 +1209,132 @@ export const WhiteboardCanvas = forwardRef<
     });
   }, [persistedFrames]);
 
-  const noteMap = new Map<string, StickyNoteElement>();
-  for (const n of persistedNotes) {
-    noteMap.set(n.id, localNoteOverrides.get(n.id) ?? n);
-  }
-  for (const n of remoteNotes) {
-    // Local drag overrides take priority — don't let a remote snapshot clobber
-    // the position we're currently dragging to.
-    if (localNoteOverrides.has(n.id)) continue;
-    const existing = noteMap.get(n.id);
-    if (!existing || n.updatedAt >= existing.updatedAt) {
-      noteMap.set(n.id, n);
-    }
-  }
-  for (const n of optimisticNotes) {
-    const existing = noteMap.get(n.id);
-    if (!existing || n.updatedAt >= existing.updatedAt) {
-      noteMap.set(n.id, n);
-    }
-  }
-  const notes = Array.from(noteMap.values()).sort(
-    (a, b) => a.createdAt - b.createdAt
-  );
-  notesRef.current = notes;
+  let notes: StickyNoteElement[];
+  let shapes: ShapeElement[];
+  let textElements: TextElement[];
+  let frames: FrameElement[];
 
-  const shapeMap = new Map<string, import("@/features/shapes").ShapeElement>();
-  for (const s of persistedShapes) {
-    shapeMap.set(s.id, localShapeOverrides.get(s.id) ?? s);
-  }
-  for (const s of remoteShapes) {
-    // Local drag overrides take priority over remote snapshots.
-    if (localShapeOverrides.has(s.id)) continue;
-    const existing = shapeMap.get(s.id);
-    if (!existing || s.updatedAt >= existing.updatedAt) {
-      shapeMap.set(s.id, s);
+  if (restoredSnapshot) {
+    notes = [...restoredSnapshot.notes].sort((a, b) => a.createdAt - b.createdAt);
+    shapes = [...restoredSnapshot.shapes].sort((a, b) => a.createdAt - b.createdAt);
+    textElements = [...restoredSnapshot.textElements].sort((a, b) => a.createdAt - b.createdAt);
+    frames = [...restoredSnapshot.frames].sort((a, b) => a.createdAt - b.createdAt);
+    notesRef.current = notes;
+    shapesRef.current = shapes;
+    textElementsRef.current = textElements;
+    framesRef.current = frames;
+  } else {
+    const noteMap = new Map<string, StickyNoteElement>();
+    for (const n of persistedNotes) {
+      noteMap.set(n.id, localNoteOverrides.get(n.id) ?? n);
     }
-  }
-  for (const s of optimisticShapes) {
-    const existing = shapeMap.get(s.id);
-    if (!existing || s.updatedAt >= existing.updatedAt) {
-      shapeMap.set(s.id, s);
+    for (const n of remoteNotes) {
+      if (localNoteOverrides.has(n.id)) continue;
+      const existing = noteMap.get(n.id);
+      if (!existing || n.updatedAt >= existing.updatedAt) {
+        noteMap.set(n.id, n);
+      }
     }
-  }
-  const shapes = Array.from(shapeMap.values()).sort(
-    (a, b) => a.createdAt - b.createdAt
-  );
-  shapesRef.current = shapes;
+    for (const n of optimisticNotes) {
+      const existing = noteMap.get(n.id);
+      if (!existing || n.updatedAt >= existing.updatedAt) {
+        noteMap.set(n.id, n);
+      }
+    }
+    notes = Array.from(noteMap.values()).sort(
+      (a, b) => a.createdAt - b.createdAt
+    );
+    notesRef.current = notes;
 
-  const textMap = new Map<string, TextElement>();
-  for (const t of persistedTextElements) {
-    textMap.set(t.id, localTextOverrides.get(t.id) ?? t);
-  }
-  for (const t of optimisticTextElements) {
-    const existing = textMap.get(t.id);
-    if (!existing || t.updatedAt >= existing.updatedAt) {
-      textMap.set(t.id, t);
+    const shapeMap = new Map<string, import("@/features/shapes").ShapeElement>();
+    for (const s of persistedShapes) {
+      shapeMap.set(s.id, localShapeOverrides.get(s.id) ?? s);
     }
-  }
-  const textElements = Array.from(textMap.values()).sort(
-    (a, b) => a.createdAt - b.createdAt
-  );
-  textElementsRef.current = textElements;
+    for (const s of remoteShapes) {
+      if (localShapeOverrides.has(s.id)) continue;
+      const existing = shapeMap.get(s.id);
+      if (!existing || s.updatedAt >= existing.updatedAt) {
+        shapeMap.set(s.id, s);
+      }
+    }
+    for (const s of optimisticShapes) {
+      const existing = shapeMap.get(s.id);
+      if (!existing || s.updatedAt >= existing.updatedAt) {
+        shapeMap.set(s.id, s);
+      }
+    }
+    shapes = Array.from(shapeMap.values()).sort(
+      (a, b) => a.createdAt - b.createdAt
+    );
+    shapesRef.current = shapes;
 
-  const frameMap = new Map<string, FrameElement>();
-  for (const f of persistedFrames) {
-    frameMap.set(f.id, localFrameOverrides.get(f.id) ?? f);
-  }
-  for (const f of optimisticFrames) {
-    const existing = frameMap.get(f.id);
-    if (!existing || f.updatedAt >= existing.updatedAt) {
-      frameMap.set(f.id, f);
+    const textMap = new Map<string, TextElement>();
+    for (const t of persistedTextElements) {
+      textMap.set(t.id, localTextOverrides.get(t.id) ?? t);
     }
+    for (const t of optimisticTextElements) {
+      const existing = textMap.get(t.id);
+      if (!existing || t.updatedAt >= existing.updatedAt) {
+        textMap.set(t.id, t);
+      }
+    }
+    textElements = Array.from(textMap.values()).sort(
+      (a, b) => a.createdAt - b.createdAt
+    );
+    textElementsRef.current = textElements;
+
+    const frameMap = new Map<string, FrameElement>();
+    for (const f of persistedFrames) {
+      frameMap.set(f.id, localFrameOverrides.get(f.id) ?? f);
+    }
+    for (const f of optimisticFrames) {
+      const existing = frameMap.get(f.id);
+      if (!existing || f.updatedAt >= existing.updatedAt) {
+        frameMap.set(f.id, f);
+      }
+    }
+    frames = Array.from(frameMap.values()).sort(
+      (a, b) => a.createdAt - b.createdAt
+    );
+    framesRef.current = frames;
   }
-  const frames = Array.from(frameMap.values()).sort(
-    (a, b) => a.createdAt - b.createdAt
-  );
-  framesRef.current = frames;
 
   useEffect(() => {
     connectorsRef.current = connectors;
   }, [connectors]);
+
+  useEffect(() => {
+    if (!restoredSnapshot) return;
+    const noteIds = new Set(persistedNotes.map((n) => n.id));
+    const snapshotNoteIds = new Set(restoredSnapshot.notes.map((n) => n.id));
+    const shapeIds = new Set(persistedShapes.map((s) => s.id));
+    const snapshotShapeIds = new Set(restoredSnapshot.shapes.map((s) => s.id));
+    const textIds = new Set(persistedTextElements.map((t) => t.id));
+    const snapshotTextIds = new Set(restoredSnapshot.textElements.map((t) => t.id));
+    const frameIds = new Set(persistedFrames.map((f) => f.id));
+    const snapshotFrameIds = new Set(restoredSnapshot.frames.map((f) => f.id));
+    const notesMatch =
+      noteIds.size === snapshotNoteIds.size &&
+      [...snapshotNoteIds].every((id) => noteIds.has(id));
+    const shapesMatch =
+      shapeIds.size === snapshotShapeIds.size &&
+      [...snapshotShapeIds].every((id) => shapeIds.has(id));
+    const textMatch =
+      textIds.size === snapshotTextIds.size &&
+      [...snapshotTextIds].every((id) => textIds.has(id));
+    const framesMatch =
+      frameIds.size === snapshotFrameIds.size &&
+      [...snapshotFrameIds].every((id) => frameIds.has(id));
+    if (notesMatch && shapesMatch && textMatch && framesMatch) {
+      setRestoredSnapshot(null);
+    }
+  }, [
+    restoredSnapshot,
+    persistedNotes,
+    persistedShapes,
+    persistedTextElements,
+    persistedFrames,
+  ]);
 
   function nextId(): string {
     return typeof crypto !== "undefined" && crypto.randomUUID
@@ -1384,6 +1530,7 @@ export const WhiteboardCanvas = forwardRef<
       getNotes: () => notesRef.current,
       getBoardState,
       createNotesFromAI,
+      createStickyNotesGridFromAI,
       createShapesFromAI,
       createFramesFromAI,
       createConnectorsFromAI,
@@ -1406,6 +1553,7 @@ export const WhiteboardCanvas = forwardRef<
     [
       getBoardState,
       createNotesFromAI,
+      createStickyNotesGridFromAI,
       createShapesFromAI,
       createFramesFromAI,
       createConnectorsFromAI,

@@ -16,6 +16,8 @@ export interface BoardStateSummaryBounded {
   color?: string;
   fill?: string;
   kind?: string;
+  /** Set when the element's center is inside a frame; use to know which frame contains this note/shape/text. */
+  parentFrameId?: string;
 }
 
 /** Connectors have from/to, not a bounding box */
@@ -125,6 +127,7 @@ export interface DistributeElementsArgs {
 
 export type BoardAgentToolName =
   | "create_sticky_note"
+  | "create_sticky_notes_grid"
   | "create_shape"
   | "create_shapes"
   | "create_frame"
@@ -133,6 +136,7 @@ export type BoardAgentToolName =
   | "move_elements"
   | "update_elements"
   | "delete_elements"
+  | "clear_board"
   | "arrange_grid"
   | "resize_frame_to_fit"
   | "distribute_elements";

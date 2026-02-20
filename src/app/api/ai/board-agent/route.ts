@@ -11,13 +11,17 @@ You receive a JSON snapshot of the current board state (elements with id, type, 
 All coordinates and sizes are in board space (not screen pixels). Use sensible values: e.g. x,y starting around 100-200, spacing 20-40px.
 Default sticky note size: 160x120. Default frame: 320x200. Default shape: 120x80.
 When creating multiple items (e.g. grid, template), place them so they don't overlap and use consistent spacing (e.g. 24-40px gaps).
+Grid of sticky notes: When the user asks for an NxM grid of sticky notes (e.g. 6x6, 4x4, 2x3 pros and cons), use create_sticky_notes_grid with rows and columns. To add task-appropriate text (e.g. pros and cons, or row/column labels), pass labels: an array of strings in row-major order—e.g. 3 rows × 2 columns for pros and cons: labels ['Pro 1','Con 1','Pro 2','Con 2','Pro 3','Con 3']. This gives correct layout and content in one call. Do not use create_sticky_note with many items for grids.
 
-Frames:
-- Each frame has a 28px title bar at the top. When placing sticky notes or shapes inside a frame, use y at least frame.y + 28 (e.g. frame.y + 36 with padding) so content appears in the body below the title bar, not overlapping it.
-- For a single frame use create_frame. For two or more frames or columns always use create_frames with an items array (one item per frame). Use different x positions so frames sit side by side (e.g. x: 100, 420, 740 for three; add ~320 per column).
-- Templates: "SWOT analysis" = create_frames with 4 items: Strengths, Weaknesses, Opportunities, Threats in a 2x2 layout (e.g. Strengths 100,100 / Weaknesses 420,100 / Opportunities 100,340 / Threats 420,340). When adding notes inside each quadrant, use y = frame.y + 36 or higher.
-- "Retrospective board" or "What Went Well, What Didn't, Action Items" = create_frames with 3 items: "What Went Well", "What Didn't Go Well" (or "What Didn't"), "Action Items", with x: 100, 420, 740.
-- "User journey map with N stages" = create_frames with N items (e.g. 5 stages: Discover, Define, Design, Develop, Deliver or similar). Optionally add connectors between consecutive frames using create_connector and the frame IDs from the board state after creation.
+Frames (containers):
+- A frame is a labeled container: it has id, type "frame", title, x, y, width, height. The top 28px is the title bar; the content area is the rectangle from (x, y+28) to (x+width, y+height). Nothing should be placed in the title bar strip.
+- Elements inside a frame have "parentFrameId" set to that frame's id. Use this to know which sticky notes/shapes belong to which frame (e.g. "add a note to the Strengths frame" = find the frame with title "Strengths", then create a note with x,y inside that frame's content area).
+- To add content inside a frame: use the frame's id from board state and place items with x between frame.x and frame.x+width minus item width, and y at least frame.y+28 (e.g. frame.y+36 for padding). Example: frame at 100,100 320x200 → content area x 100–320, y from 128; first note at (116, 144).
+- Single frame: use create_frame. Two or more frames: use create_frames with items array, different x so they sit side by side (e.g. x: 100, 420, 740 for three).
+- Templates: "SWOT analysis" = create_frames with 4 items: Strengths, Weaknesses, Opportunities, Threats in 2x2 (e.g. Strengths 100,100 / Weaknesses 420,100 / Opportunities 100,340 / Threats 420,340). Add notes inside each using that frame's bounds and y >= frame.y+36.
+- "Retrospective" = create_frames with 3 items: "What Went Well", "What Didn't Go Well", "Action Items", x: 100, 420, 740.
+- "User journey with N stages" = create_frames with N items; optionally connect consecutive frames with create_connector using their ids from board state.
+- resize_frame_to_fit: use when the user asks to resize a frame to fit its contents. Elements with that frame's id as parentFrameId are considered inside it.
 
 Referring to elements:
 - When the user says "these", "selected", "the pink note", "the frame called X", match from the board state by description (text/title/color/type) and use the element id. If multiple match (e.g. "pink notes"), use all their ids.
@@ -29,6 +33,8 @@ IMPORTANT: You MUST use the provided tools to make changes. Do not only describe
 - resize_frame_to_fit: when the user asks to resize a frame to fit its contents.
 - distribute_elements: when they ask to space elements evenly, in a row/column, or with equal gaps (direction "horizontal" or "vertical").
 - For "arrange in a grid" use arrange_grid with the element ids and optional columns/spacing.
+- For "NxM grid of sticky notes" use create_sticky_notes_grid with rows and columns. When the grid has a purpose (e.g. pros and cons, voting options, categories), pass labels with the text for each cell in row-major order so notes have the right content.
+- For "delete all", "clear the board", "remove everything", or "clear all elements" use clear_board (no parameters). Do not use delete_elements with a list of IDs for clearing the whole board—clear_board removes everything reliably.
 - For multiple shapes at once (e.g. "4 circles", "2x2 grid of rectangles") use create_shapes with an items array.`;
 
 function buildSystemPrompt(boardState: BoardStateSummary[]): string {
@@ -80,7 +86,7 @@ export async function POST(req: Request) {
       tools: {
         create_sticky_note: tool({
           description:
-            "Create one or more sticky notes. Pass items: array of { text, color?, x?, y?, width?, height? }. For a 2x3 grid use 6 items with x,y spaced (e.g. row1: 100,100 / 280,100 / 460,100; row2: 100,260 / 280,260 / 460,260).",
+            "Create one or more sticky notes with custom text/position. Pass items: array of { text, color?, x?, y?, width?, height? }. For an NxM grid of sticky notes (e.g. 6x6, 4x4) use create_sticky_notes_grid instead. To add a note inside a frame: use x,y within that frame's content area (y at least frame.y+28).",
           parameters: jsonSchema<{
             items: Array<{
               text: string;
@@ -113,9 +119,37 @@ export async function POST(req: Request) {
           }),
           execute: async () => "Done.",
         }),
+        create_sticky_notes_grid: tool({
+          description:
+            "Create an NxM grid of sticky notes with correct spacing (no overlap). Use for any grid (e.g. 6x6, 2x3). Optionally pass labels: array of strings in row-major order (first row left-to-right, then second row, etc.) to set each note's text—e.g. for '2x3 pros and cons' use rows=3, columns=2, labels: ['Pro 1','Con 1','Pro 2','Con 2','Pro 3','Con 3']. If labels is omitted, notes are empty. Optional startX, startY, spacing.",
+          parameters: jsonSchema<{
+            rows: number;
+            columns: number;
+            labels?: string[];
+            startX?: number;
+            startY?: number;
+            spacing?: number;
+          }>({
+            type: "object",
+            properties: {
+              rows: { type: "number", description: "Number of rows in the grid" },
+              columns: { type: "number", description: "Number of columns in the grid" },
+              labels: {
+                type: "array",
+                items: { type: "string" },
+                description: "Optional. Text for each cell in row-major order (row 0 left to right, then row 1, etc.). Length can be rows*columns; extra entries ignored, missing entries get empty text.",
+              },
+              startX: { type: "number", description: "Left edge of grid (default 100)" },
+              startY: { type: "number", description: "Top edge of grid (default 100)" },
+              spacing: { type: "number", description: "Gap between notes in px (default 24)" },
+            },
+            required: ["rows", "columns"],
+          }),
+          execute: async () => "Done.",
+        }),
         create_shape: tool({
           description:
-            "Create a single shape (rect, circle, or triangle). For multiple shapes use create_shapes instead.",
+            "Create a single shape (rect, circle, or triangle). To place inside a frame use x,y in the frame's content area (y >= frame.y+28). For multiple shapes use create_shapes instead.",
           parameters: jsonSchema<{
             shapeType: "rect" | "circle" | "triangle";
             fill?: string;
@@ -139,7 +173,7 @@ export async function POST(req: Request) {
         }),
         create_shapes: tool({
           description:
-            "Create multiple shapes in one call. Use for grids (e.g. 2x2 rectangles), multiple circles, or several shapes with different positions. Each item has shapeType (rect/circle/triangle) and optional fill, x, y, width, height. Space positions (e.g. x: 100, 240, 380 for three in a row).",
+            "Create multiple shapes in one call. Use for grids (e.g. 2x2 rectangles), multiple circles, or several shapes with different positions. Each item has shapeType (rect/circle/triangle) and optional fill, x, y, width, height. To place inside a frame: use x,y in the frame's content area (y >= frame.y+28). Space positions (e.g. x: 100, 240, 380 for three in a row).",
           parameters: jsonSchema<{
             items: Array<{
               shapeType: "rect" | "circle" | "triangle";
@@ -174,7 +208,7 @@ export async function POST(req: Request) {
         }),
         create_frame: tool({
           description:
-            "Create a single frame (labeled container). Use for one frame only. For multiple frames or columns use create_frames instead.",
+            "Create a single frame (labeled container with 28px title bar; content area is below y+28). Use for one frame only. For multiple frames or columns use create_frames instead.",
           parameters: jsonSchema<{
             title: string;
             x?: number;
@@ -196,7 +230,7 @@ export async function POST(req: Request) {
         }),
         create_frames: tool({
           description:
-            "Create multiple frames in one call. Pass items: array of { title, x?, y?, width?, height? }. One item per frame. Use different x for side-by-side (e.g. 100, 420, 740 for 3). For SWOT use 4 titles: Strengths, Weaknesses, Opportunities, Threats. For retrospective use 3: What Went Well, What Didn't, Action Items. For user journey use N stage names.",
+            "Create multiple frames in one call. Each frame has a 28px title bar; content goes below. Pass items: array of { title, x?, y?, width?, height? }. One item per frame. Use different x for side-by-side (e.g. 100, 420, 740 for 3). For SWOT use 4 titles: Strengths, Weaknesses, Opportunities, Threats. For retrospective use 3: What Went Well, What Didn't, Action Items. For user journey use N stage names. When adding notes into a frame later, use that frame's id and bounds from board state.",
           parameters: jsonSchema<{
             items: Array<{
               title: string;
@@ -306,11 +340,21 @@ export async function POST(req: Request) {
           execute: async () => "Done.",
         }),
         delete_elements: tool({
-          description: "Delete elements by ID.",
+          description:
+            "Delete specific elements by ID. Use when the user names which items to remove (e.g. 'delete the pink note'). For 'delete all' or 'clear the board' use clear_board instead.",
           parameters: jsonSchema<{ ids: string[] }>({
             type: "object",
             properties: { ids: { type: "array", items: { type: "string" } } },
             required: ["ids"],
+          }),
+          execute: async () => "Done.",
+        }),
+        clear_board: tool({
+          description:
+            "Remove ALL elements from the board (notes, shapes, text, frames, connectors). Use when the user asks to delete everything, clear the board, remove all elements, or start fresh. No parameters.",
+          parameters: jsonSchema<Record<string, never>>({
+            type: "object",
+            properties: {},
           }),
           execute: async () => "Done.",
         }),
@@ -334,7 +378,7 @@ export async function POST(req: Request) {
         }),
         resize_frame_to_fit: tool({
           description:
-            "Resize a frame to fit its contents. Use when the user asks to resize a frame to fit its contents or to fit the elements inside it. Elements are considered inside if their center is within the frame bounds.",
+            "Resize a frame to fit its contents. Use when the user asks to resize a frame to fit its contents. Elements with parentFrameId equal to this frame's id (or whose center is within the frame bounds) are considered inside.",
           parameters: jsonSchema<{ frameId: string; padding?: number }>({
             type: "object",
             properties: {

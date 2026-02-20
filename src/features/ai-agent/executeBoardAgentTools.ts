@@ -33,6 +33,20 @@ export function executeBoardAgentTools(
           }
           break;
         }
+        case "create_sticky_notes_grid": {
+          const rows = inv.args.rows as number;
+          const columns = inv.args.columns as number;
+          if (typeof rows === "number" && typeof columns === "number" && rows >= 1 && columns >= 1) {
+            const labels = inv.args.labels as string[] | undefined;
+            handle.createStickyNotesGridFromAI(rows, columns, {
+              labels: Array.isArray(labels) ? labels : undefined,
+              startX: inv.args.startX as number | undefined,
+              startY: inv.args.startY as number | undefined,
+              spacing: inv.args.spacing as number | undefined,
+            });
+          }
+          break;
+        }
         case "create_shape": {
           const shapeType = inv.args.shapeType as "rect" | "circle" | "triangle";
           if (shapeType) {
@@ -137,6 +151,10 @@ export function executeBoardAgentTools(
           if (Array.isArray(ids) && ids.length > 0) {
             handle.deleteElementsByAgent(ids);
           }
+          break;
+        }
+        case "clear_board": {
+          void handle.clearCanvas();
           break;
         }
         case "arrange_grid": {
