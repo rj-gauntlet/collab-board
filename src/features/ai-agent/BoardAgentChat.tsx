@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useChat } from "ai/react";
+import { useChat, type Message } from "ai/react";
 import type { WhiteboardCanvasHandle } from "@/features/whiteboard";
 import {
   executeBoardAgentTools,
@@ -54,7 +54,7 @@ export function BoardAgentChat({
     api: "/api/ai/board-agent",
     body: { boardId },
     onFinish,
-    initialMessages,
+    initialMessages: initialMessages as Message[],
   });
 
   // Run tool execution when the latest assistant message has tool invocations

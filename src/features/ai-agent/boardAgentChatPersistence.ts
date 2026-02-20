@@ -42,7 +42,7 @@ export function loadBoardAgentChat(boardId: string): StoredMessage[] {
 
 export function saveBoardAgentChat(
   boardId: string,
-  messages: Array<{ id: string; role: string; content?: string; parts?: unknown[]; [key: string]: unknown }>,
+  messages: Array<{ id: string; role: string; content?: string; parts?: unknown[] }>,
   createdAtById: Map<string, number>
 ): void {
   if (typeof window === "undefined") return;
