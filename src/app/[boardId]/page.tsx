@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import {
   WhiteboardCanvas,
@@ -17,6 +17,7 @@ import { addUserBoard } from "@/features/boards/userBoardActions";
 import { useBoardName } from "@/features/boards/useBoardName";
 import { useBoardExists } from "@/features/boards/useBoardExists";
 import { setBoardName } from "@/features/boards/userBoardActions";
+import { useSmartCluster, BoardAgentChat } from "@/features/ai-agent";
 
 export default function BoardPage() {
   const params = useParams();
@@ -30,6 +31,7 @@ export default function BoardPage() {
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [nameEditing, setNameEditing] = useState(false);
   const [nameEditValue, setNameEditValue] = useState("");
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const canvasRef = useRef<WhiteboardCanvasHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState(() =>
@@ -93,6 +95,19 @@ export default function BoardPage() {
     user?.displayName ?? user?.email ?? (user ? "Anonymous" : null);
   const boardName = useBoardName(boardId ?? null);
   const { exists, loading: existsLoading } = useBoardExists(boardId ?? null, user?.uid);
+
+  const getNotes = useCallback(() => canvasRef.current?.getNotes() ?? [], []);
+  const createNotesFromAI = useCallback(
+    (notes: Array<{ text: string; color: string; x: number; y: number }>) => {
+      canvasRef.current?.createNotesFromAI(notes);
+    },
+    []
+  );
+  const { runSmartCluster, isLoading: smartClusterLoading, message: smartClusterMessage, clearMessage: clearSmartClusterMessage } = useSmartCluster(
+    getNotes,
+    createNotesFromAI,
+    canvasSize
+  );
 
   useEffect(() => {
     if (exists === true && boardId) {
@@ -212,12 +227,6 @@ export default function BoardPage() {
             >
               CollabBoard <span className="font-medium text-[#fff8e1]">MVP</span>
             </a>
-            <UsersList
-              boardId={boardId}
-              currentUserId={user.uid}
-              currentDisplayName={displayName}
-              currentEmail={user.email ?? null}
-            />
             <div className="flex items-center gap-1">
               {nameEditing ? (
                 <input
@@ -298,6 +307,29 @@ export default function BoardPage() {
             <PerformanceMonitor visible={perfMonitorVisible} />
             <button
               type="button"
+              onClick={handleCreateBoard}
+              className="rounded-md p-1.5 text-white/90 transition-colors hover:bg-white/20 hover:text-white"
+              title="New board"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M12 8v8" />
+                <path d="M8 12h8" />
+              </svg>
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 if (confirm("Clear all content from the canvas?")) {
                   canvasRef.current?.clearCanvas();
@@ -325,62 +357,22 @@ export default function BoardPage() {
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {/* Undo */}
             <button
               type="button"
-              onClick={() => canvasRef.current?.undo()}
-              className="font-sans rounded-md px-3 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
-              title="Undo (Ctrl+Z)"
-            >
-              ↩ Undo
-            </button>
-            {/* Redo */}
-            <button
-              type="button"
-              onClick={() => canvasRef.current?.redo()}
-              className="font-sans rounded-md px-3 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
-              title="Redo (Ctrl+Y)"
-            >
-              ↪ Redo
-            </button>
-            {/* Export */}
-            <button
-              type="button"
-              onClick={() => canvasRef.current?.exportImage()}
-              className="font-sans rounded-md px-3 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
-              title="Export as PNG"
-            >
-              ⬇ Export
-            </button>
-            {/* Grid toggle */}
-            <button
-              type="button"
-              onClick={() => setGridVisible((v) => !v)}
+              onClick={() => setAgentPanelOpen((v) => !v)}
               className={`font-sans rounded-md px-3 py-1.5 text-sm transition ${
-                gridVisible ? "bg-white/30 text-white" : "text-white/90 hover:bg-white/20 hover:text-white"
+                agentPanelOpen ? "bg-white/30 text-white" : "text-white/90 hover:bg-white/20 hover:text-white"
               }`}
-              title="Toggle grid"
+              title="Toggle AI board agent"
             >
-              Grid
+              Agent
             </button>
-            {/* Snap toggle */}
-            <button
-              type="button"
-              onClick={() => setSnapEnabled((v) => !v)}
-              className={`font-sans rounded-md px-3 py-1.5 text-sm transition ${
-                snapEnabled ? "bg-white/30 text-white" : "text-white/90 hover:bg-white/20 hover:text-white"
-              }`}
-              title="Snap to grid"
-            >
-              Snap
-            </button>
-            <button
-              type="button"
-              onClick={handleCreateBoard}
-              className="font-sans rounded-md px-3 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
-            >
-              New board
-            </button>
+            <UsersList
+              boardId={boardId}
+              currentUserId={user.uid}
+              currentDisplayName={displayName}
+              currentEmail={user.email ?? null}
+            />
             <span className="font-sans text-sm text-white/90">
               {displayName}
             </span>
@@ -395,6 +387,29 @@ export default function BoardPage() {
         </div>
       </header>
 
+      {/* Smart Cluster message toast */}
+      {smartClusterMessage && (
+        <div
+          role="status"
+          className={`font-sans flex items-center justify-between gap-4 px-4 py-2 text-sm ${
+            smartClusterMessage.type === "success"
+              ? "bg-emerald-100 text-emerald-800 border-b border-emerald-200"
+              : smartClusterMessage.type === "error"
+                ? "bg-red-100 text-red-800 border-b border-red-200"
+                : "bg-amber-100 text-amber-800 border-b border-amber-200"
+          }`}
+        >
+          <span>{smartClusterMessage.text}</span>
+          <button
+            type="button"
+            onClick={clearSmartClusterMessage}
+            className="shrink-0 rounded px-2 py-0.5 font-medium opacity-80 hover:opacity-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div
         ref={canvasContainerRef}
         className="relative min-h-0 flex-1 w-full"
@@ -407,9 +422,27 @@ export default function BoardPage() {
               onToolChange={setActiveTool}
               hasSelection={selectedCount > 0}
               onDeleteSelection={() => canvasRef.current?.deleteSelection?.()}
+              onUndo={() => canvasRef.current?.undo()}
+              onRedo={() => canvasRef.current?.redo()}
+              onExport={() => canvasRef.current?.exportImage()}
+              gridVisible={gridVisible}
+              onGridToggle={() => setGridVisible((v) => !v)}
+              snapEnabled={snapEnabled}
+              onSnapToggle={() => setSnapEnabled((v) => !v)}
+              onCluster={runSmartCluster}
+              clusterLoading={smartClusterLoading}
             />
           </div>
         </div>
+        {agentPanelOpen && boardId && (
+          <div className="absolute right-4 top-4 z-20">
+            <BoardAgentChat
+              boardId={boardId}
+              canvasRef={canvasRef}
+              getBoardState={() => canvasRef.current?.getBoardState() ?? []}
+            />
+          </div>
+        )}
         <div className="absolute inset-0">
           <WhiteboardErrorBoundary>
             <WhiteboardCanvas

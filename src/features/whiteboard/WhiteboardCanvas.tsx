@@ -72,12 +72,21 @@ import type { ShapeElement } from "@/features/shapes";
 import type { TextElement } from "@/features/text-elements";
 import type { FrameElement } from "@/features/frames";
 import type { ConnectorElement } from "@/features/connectors";
+import type { BoardStateSummary } from "@/features/ai-agent/board-agent-types";
 
 export interface WhiteboardCanvasHandle {
   getNotes: () => StickyNoteElement[];
+  getBoardState: () => BoardStateSummary[];
   createNotesFromAI: (
-    notes: Array<{ text: string; color: string; x: number; y: number }>
+    notes: Array<{ text: string; color?: string; x?: number; y?: number; width?: number; height?: number }>
   ) => void;
+  createShapesFromAI: (items: Array<{ shapeType: "rect" | "circle" | "triangle"; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => void;
+  createFramesFromAI: (items: Array<{ title: string; x?: number; y?: number; width?: number; height?: number }>) => void;
+  createConnectorsFromAI: (items: Array<{ fromId: string; toId: string; label?: string; style?: "line" | "arrow" }>) => void;
+  moveElementsByAgent: (ids: string[], dx: number, dy: number) => void;
+  updateElementsByAgent: (updates: Array<{ id: string; text?: string; title?: string; color?: string; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => void;
+  deleteElementsByAgent: (ids: string[]) => void;
+  arrangeGridByAgent: (ids: string[], columns?: number, spacing?: number) => void;
   clearCanvas: () => Promise<void>;
   deleteSelection: () => void;
   exportImage: () => void;
@@ -285,6 +294,7 @@ export const WhiteboardCanvas = forwardRef<
   const shapesRef = useRef<ShapeElement[]>([]);
   const textElementsRef = useRef<TextElement[]>([]);
   const framesRef = useRef<FrameElement[]>([]);
+  const connectorsRef = useRef<ConnectorElement[]>([]);
 
   // ── Undo / Redo (must be defined before any callback that calls captureSnapshot) ──
   const handleRestore = useCallback((snapshot: BoardSnapshot) => {
@@ -619,13 +629,19 @@ export const WhiteboardCanvas = forwardRef<
   }, [boardId]);
 
   const createNotesFromAI = useCallback(
-    (aiNotes: Array<{ text: string; color: string; x: number; y: number }>) => {
+    (aiNotes: Array<{ text: string; color?: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      let offsetY = 0;
       for (const aiNote of aiNotes) {
-        const note = createDefaultNote(aiNote.x, aiNote.y, userId);
+        const x = aiNote.x ?? 100;
+        const y = aiNote.y ?? 100 + offsetY;
+        offsetY += (aiNote.height ?? 120) + 20;
+        const note = createDefaultNote(x, y, userId);
         const fullNote: StickyNoteElement = {
           ...note,
           text: aiNote.text,
-          color: aiNote.color,
+          color: aiNote.color ?? note.color,
+          ...(aiNote.width != null && { width: aiNote.width }),
+          ...(aiNote.height != null && { height: aiNote.height }),
         };
         setOptimisticNotes((prev) => [...prev, fullNote]);
         persistNote(boardId, fullNote).catch((err) => {
@@ -635,6 +651,268 @@ export const WhiteboardCanvas = forwardRef<
       }
     },
     [boardId, userId]
+  );
+
+  const getBoardState = useCallback((): BoardStateSummary[] => {
+    const summaries: BoardStateSummary[] = [];
+    for (const n of notesRef.current) {
+      summaries.push({
+        id: n.id,
+        type: "sticky-note",
+        text: n.text,
+        x: n.x,
+        y: n.y,
+        width: n.width,
+        height: n.height,
+        color: n.color,
+      });
+    }
+    for (const s of shapesRef.current) {
+      summaries.push({
+        id: s.id,
+        type: "shape",
+        x: s.x,
+        y: s.y,
+        width: s.width,
+        height: s.height,
+        fill: s.fill,
+        kind: s.kind,
+      });
+    }
+    for (const t of textElementsRef.current) {
+      summaries.push({
+        id: t.id,
+        type: "text",
+        text: t.text,
+        x: t.x,
+        y: t.y,
+        width: t.width,
+        height: 24,
+        color: t.fill,
+      });
+    }
+    for (const f of framesRef.current) {
+      summaries.push({
+        id: f.id,
+        type: "frame",
+        title: f.title,
+        x: f.x,
+        y: f.y,
+        width: f.width,
+        height: f.height,
+      });
+    }
+    for (const c of connectorsRef.current) {
+      summaries.push({
+        id: c.id,
+        type: "connector",
+        fromId: c.fromId,
+        toId: c.toId,
+      });
+    }
+    return summaries;
+  }, []);
+
+  const createShapesFromAI = useCallback(
+    (items: Array<{ shapeType: "rect" | "circle" | "triangle"; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      for (const item of items) {
+        const x = item.x ?? 100;
+        const y = item.y ?? 100;
+        const kind = item.shapeType === "circle" ? "circle" : item.shapeType === "triangle" ? "triangle" : "rect";
+        const shape = createDefaultShape(x, y, userId, kind);
+        const full: ShapeElement = {
+          ...shape,
+          ...(item.fill != null && { fill: item.fill }),
+          ...(item.width != null && { width: item.width }),
+          ...(item.height != null && { height: item.height }),
+        };
+        setOptimisticShapes((prev) => [...prev, full]);
+        persistShape(boardId, full).catch((err) => {
+          console.error("Failed to create AI shape:", err);
+          setOptimisticShapes((prev) => prev.filter((s) => s.id !== full.id));
+        });
+      }
+    },
+    [boardId, userId]
+  );
+
+  const createFramesFromAI = useCallback(
+    (items: Array<{ title: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      for (const item of items) {
+        const x = item.x ?? 100;
+        const y = item.y ?? 100;
+        const frame = createDefaultFrame(x, y, userId);
+        const full: FrameElement = {
+          ...frame,
+          title: item.title,
+          ...(item.width != null && { width: item.width }),
+          ...(item.height != null && { height: item.height }),
+        };
+        setOptimisticFrames((prev) => [...prev, full]);
+        persistFrame(boardId, full).catch((err) => {
+          console.error("Failed to create AI frame:", err);
+          setOptimisticFrames((prev) => prev.filter((f) => f.id !== full.id));
+        });
+      }
+    },
+    [boardId, userId]
+  );
+
+  const createConnectorsFromAI = useCallback(
+    (items: Array<{ fromId: string; toId: string; label?: string; style?: "line" | "arrow" }>) => {
+      const noteIds = new Set(notesRef.current.map((n) => n.id));
+      const shapeIds = new Set(shapesRef.current.map((s) => s.id));
+      const inferType = (id: string): ConnectorElement["fromType"] =>
+        shapeIds.has(id) ? "shape" : "note";
+      for (const item of items) {
+        const connector = createDefaultConnector(
+          item.fromId,
+          item.toId,
+          inferType(item.fromId),
+          inferType(item.toId),
+          userId,
+          item.style ?? "arrow"
+        );
+        const full: ConnectorElement = {
+          ...connector,
+          ...(item.label != null && { label: item.label }),
+        };
+        persistConnector(boardId, full).catch((err) =>
+          console.error("Failed to create AI connector:", err)
+        );
+      }
+    },
+    [boardId, userId]
+  );
+
+  const moveElementsByAgent = useCallback(
+    (ids: string[], dx: number, dy: number) => {
+      captureSnapshot();
+      for (const n of notesRef.current) {
+        if (ids.includes(n.id)) {
+          const updated = { ...n, x: n.x + dx, y: n.y + dy, updatedAt: Date.now() };
+          handleNoteUpdate(updated);
+          persistNote(boardId, updated).catch(console.error);
+        }
+      }
+      for (const s of shapesRef.current) {
+        if (ids.includes(s.id)) {
+          const updated = { ...s, x: s.x + dx, y: s.y + dy, updatedAt: Date.now() };
+          handleShapeUpdate(updated);
+          persistShape(boardId, updated).catch(console.error);
+        }
+      }
+      for (const t of textElementsRef.current) {
+        if (ids.includes(t.id)) {
+          const updated = { ...t, x: t.x + dx, y: t.y + dy, updatedAt: Date.now() };
+          handleTextUpdate(updated);
+          persistTextElement(boardId, updated).catch(console.error);
+        }
+      }
+      for (const f of framesRef.current) {
+        if (ids.includes(f.id)) {
+          const updated = { ...f, x: f.x + dx, y: f.y + dy, updatedAt: Date.now() };
+          handleFrameUpdate(updated);
+          persistFrame(boardId, updated).catch(console.error);
+        }
+      }
+    },
+    [boardId, captureSnapshot, handleNoteUpdate, handleShapeUpdate, handleTextUpdate, handleFrameUpdate]
+  );
+
+  const updateElementsByAgent = useCallback(
+    (updates: Array<{ id: string; text?: string; title?: string; color?: string; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      for (const u of updates) {
+        const note = notesRef.current.find((n) => n.id === u.id);
+        if (note) {
+          const updated = { ...note, ...u, updatedAt: Date.now() };
+          if (u.text !== undefined) (updated as StickyNoteElement).text = u.text;
+          if (u.color !== undefined) (updated as StickyNoteElement).color = u.color;
+          handleNoteUpdate(updated as StickyNoteElement);
+          persistNote(boardId, updated as StickyNoteElement).catch(console.error);
+          continue;
+        }
+        const shape = shapesRef.current.find((s) => s.id === u.id);
+        if (shape) {
+          const updated = { ...shape, ...u, updatedAt: Date.now() };
+          if (u.fill !== undefined) (updated as ShapeElement).fill = u.fill;
+          handleShapeUpdate(updated as ShapeElement);
+          persistShape(boardId, updated as ShapeElement).catch(console.error);
+          continue;
+        }
+        const text = textElementsRef.current.find((t) => t.id === u.id);
+        if (text) {
+          const updated = { ...text, ...u, updatedAt: Date.now() };
+          if (u.text !== undefined) (updated as TextElement).text = u.text;
+          if (u.fill !== undefined) (updated as TextElement).fill = u.fill;
+          handleTextUpdate(updated as TextElement);
+          persistTextElement(boardId, updated as TextElement).catch(console.error);
+          continue;
+        }
+        const frame = framesRef.current.find((f) => f.id === u.id);
+        if (frame) {
+          const updated = { ...frame, ...u, updatedAt: Date.now() };
+          if (u.title !== undefined) (updated as FrameElement).title = u.title;
+          handleFrameUpdate(updated as FrameElement);
+          persistFrame(boardId, updated as FrameElement).catch(console.error);
+        }
+      }
+    },
+    [boardId, handleNoteUpdate, handleShapeUpdate, handleTextUpdate, handleFrameUpdate]
+  );
+
+  const deleteElementsByAgent = useCallback(
+    (ids: string[]) => {
+      deleteByIds(new Set(ids));
+    },
+    [deleteByIds]
+  );
+
+  const arrangeGridByAgent = useCallback(
+    (ids: string[], columns = 2, spacing = 24) => {
+      const elements: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+      for (const n of notesRef.current) {
+        if (ids.includes(n.id)) elements.push({ id: n.id, x: n.x, y: n.y, width: n.width, height: n.height });
+      }
+      for (const s of shapesRef.current) {
+        if (ids.includes(s.id)) elements.push({ id: s.id, x: s.x, y: s.y, width: s.width, height: s.height });
+      }
+      for (const t of textElementsRef.current) {
+        if (ids.includes(t.id)) elements.push({ id: t.id, x: t.x, y: t.y, width: t.width, height: 24 });
+      }
+      for (const f of framesRef.current) {
+        if (ids.includes(f.id)) elements.push({ id: f.id, x: f.x, y: f.y, width: f.width, height: f.height });
+      }
+      if (elements.length === 0) return;
+      const originX = Math.min(...elements.map((e) => e.x));
+      const originY = Math.min(...elements.map((e) => e.y));
+      const rows = Math.ceil(elements.length / columns);
+      const rowHeights: number[] = [];
+      for (let row = 0; row < rows; row++) {
+        let maxH = 0;
+        for (let col = 0; col < columns; col++) {
+          const idx = row * columns + col;
+          if (idx >= elements.length) break;
+          if (elements[idx].height > maxH) maxH = elements[idx].height;
+        }
+        rowHeights.push(maxH + spacing);
+      }
+      let yOffset = 0;
+      for (let row = 0; row < rows; row++) {
+        let colX = 0;
+        for (let col = 0; col < columns; col++) {
+          const idx = row * columns + col;
+          if (idx >= elements.length) break;
+          const el = elements[idx];
+          const targetX = originX + colX;
+          const targetY = originY + yOffset;
+          moveElementsByAgent([el.id], targetX - el.x, targetY - el.y);
+          colX += el.width + spacing;
+        }
+        yOffset += rowHeights[row];
+      }
+    },
+    [moveElementsByAgent]
   );
 
   const persistedNoteIds = new Set(persistedNotes.map((n) => n.id));
@@ -781,6 +1059,10 @@ export const WhiteboardCanvas = forwardRef<
     (a, b) => a.createdAt - b.createdAt
   );
   framesRef.current = frames;
+
+  useEffect(() => {
+    connectorsRef.current = connectors;
+  }, [connectors]);
 
   function nextId(): string {
     return typeof crypto !== "undefined" && crypto.randomUUID
@@ -974,7 +1256,15 @@ export const WhiteboardCanvas = forwardRef<
     ref,
     () => ({
       getNotes: () => notesRef.current,
+      getBoardState,
       createNotesFromAI,
+      createShapesFromAI,
+      createFramesFromAI,
+      createConnectorsFromAI,
+      moveElementsByAgent,
+      updateElementsByAgent,
+      deleteElementsByAgent,
+      arrangeGridByAgent,
       clearCanvas,
       deleteSelection: handleDeleteSelection,
       exportImage: () => {
@@ -985,7 +1275,21 @@ export const WhiteboardCanvas = forwardRef<
       redo: redoAction,
       showShortcuts: () => setShowShortcuts(true),
     }),
-    [createNotesFromAI, clearCanvas, handleDeleteSelection, undoAction, redoAction]
+    [
+      getBoardState,
+      createNotesFromAI,
+      createShapesFromAI,
+      createFramesFromAI,
+      createConnectorsFromAI,
+      moveElementsByAgent,
+      updateElementsByAgent,
+      deleteElementsByAgent,
+      arrangeGridByAgent,
+      clearCanvas,
+      handleDeleteSelection,
+      undoAction,
+      redoAction,
+    ]
   );
 
   const handleSelectNote = useCallback((id: string, addToSelection: boolean) => {

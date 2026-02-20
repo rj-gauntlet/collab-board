@@ -1,7 +1,24 @@
 "use client";
 
 import React from "react";
-import { StickyNote, Square, Triangle, Circle, Hand, MousePointer2, Trash2, Link2, Type, Layout } from "lucide-react";
+import {
+  StickyNote,
+  Square,
+  Triangle,
+  Circle,
+  Hand,
+  MousePointer2,
+  Trash2,
+  Link2,
+  Type,
+  Layout,
+  Undo2,
+  Redo2,
+  Download,
+  Grid3X3,
+  Magnet,
+  Sparkles,
+} from "lucide-react";
 import type { Tool } from "./types";
 
 interface ToolbarProps {
@@ -9,6 +26,16 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   hasSelection?: boolean;
   onDeleteSelection?: () => void;
+  /** View & actions (Option 7: moved from header) */
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onExport?: () => void;
+  gridVisible?: boolean;
+  onGridToggle?: () => void;
+  snapEnabled?: boolean;
+  onSnapToggle?: () => void;
+  onCluster?: () => void;
+  clusterLoading?: boolean;
 }
 
 export function Toolbar({
@@ -16,6 +43,15 @@ export function Toolbar({
   onToolChange,
   hasSelection = false,
   onDeleteSelection,
+  onUndo,
+  onRedo,
+  onExport,
+  gridVisible = false,
+  onGridToggle,
+  snapEnabled = false,
+  onSnapToggle,
+  onCluster,
+  clusterLoading = false,
 }: ToolbarProps) {
   return (
     <div className="font-sans flex flex-col gap-1 px-2">
@@ -147,6 +183,88 @@ export function Toolbar({
         <Circle size={18} />
         <span>Circle</span>
       </button>
+
+      {/* View & actions — moved from header (Option 7) */}
+      {(onUndo != null || onRedo != null || onExport != null || onGridToggle != null || onSnapToggle != null || onCluster != null) && (
+        <>
+          <div className="my-2 border-t border-[#ffe0b2]" aria-hidden />
+          {onUndo && (
+            <button
+              type="button"
+              onClick={onUndo}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 size={18} />
+              <span>Undo</span>
+            </button>
+          )}
+          {onRedo && (
+            <button
+              type="button"
+              onClick={onRedo}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 size={18} />
+              <span>Redo</span>
+            </button>
+          )}
+          {onExport && (
+            <button
+              type="button"
+              onClick={onExport}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
+              title="Export as PNG"
+            >
+              <Download size={18} />
+              <span>Export</span>
+            </button>
+          )}
+          {onGridToggle && (
+            <button
+              type="button"
+              onClick={onGridToggle}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                gridVisible ? "bg-[#ff8f00] text-white" : "text-[#5d4037] hover:bg-[#ffe0b2]"
+              }`}
+              title="Toggle grid"
+            >
+              <Grid3X3 size={18} />
+              <span>Grid</span>
+            </button>
+          )}
+          {onSnapToggle && (
+            <button
+              type="button"
+              onClick={onSnapToggle}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                snapEnabled ? "bg-[#ff8f00] text-white" : "text-[#5d4037] hover:bg-[#ffe0b2]"
+              }`}
+              title="Snap to grid"
+            >
+              <Magnet size={18} />
+              <span>Snap</span>
+            </button>
+          )}
+          {onCluster && (
+            <button
+              type="button"
+              onClick={onCluster}
+              disabled={clusterLoading}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2] disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Cluster sticky note text into themes (AI)"
+            >
+              {clusterLoading ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#ffe0b2] border-t-[#ff8f00]" />
+              ) : (
+                <Sparkles size={18} />
+              )}
+              <span>{clusterLoading ? "Cluster…" : "Cluster"}</span>
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

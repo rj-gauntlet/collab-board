@@ -44,9 +44,10 @@ _Last updated: Feb 2026. Use this alongside PRD.md for full context._
 - [x] Local drag override system: `localNoteOverrides` / `localShapeOverrides` Maps take priority over remote snapshots during drag
 - [x] Bug fix: RTDB remote snapshots no longer clobber local drag position (guard: `if (localNoteOverrides.has(id)) continue`)
 - [x] Bug fix: Firestore cleanup effects skip dragging element (via `draggingElementIdRef` + `useLayoutEffect`)
+- [x] **Multiplayer cursors** — `useSyncCursor` + `RemoteCursors`; RTDB `cursors/{boardId}/{userId}`; rendered in board space with name labels (displayName or userId slice)
 
 ### Auth & Board Management
-- [x] Firebase Anonymous Authentication
+- [x] Firebase Auth: Google sign-in (primary); anonymous on localhost
 - [x] Board list on home page; create new board
 - [x] Board name editing in header
 - [x] Board-not-found handling for invalid/deleted boards
@@ -66,11 +67,10 @@ None — all changes are committed as of the migration.
 ## NOT YET IMPLEMENTED (Pending)
 
 ### HIGH PRIORITY
-- [ ] **AI Board Agent** — natural language chat panel that creates/modifies/arranges board elements via GPT-4o-mini function calling (Vercel AI SDK). Full spec in PRD.md. Acceptance tests defined — must support creation, manipulation, layout, and complex template commands.
+- [ ] **AI Board Agent** — natural language chat panel that creates/modifies/arranges board elements via GPT-4o-mini function calling (Vercel AI SDK). Full spec in PRD.md. Acceptance tests defined — must support creation, manipulation, layout, and complex template commands. _(Smart Cluster — theme categorization via `clusterNotesIntoThemes` / `useSmartCluster` — exists in code but is not wired in the UI.)_
 
 ### NORMAL PRIORITY
 - [ ] **Image upload** — place/resize images on canvas
-- [ ] **Real-time cursors** — show other users' cursors with name labels (RTDB infra exists, just needs rendering)
 - [ ] **More shape types** — diamond, hexagon, star, speech bubble
 - [ ] **Minimap** — small board overview panel
 - [ ] **Layers / Z-order panel** — list, reorder, lock, hide elements
