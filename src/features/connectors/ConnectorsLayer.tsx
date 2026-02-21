@@ -116,10 +116,28 @@ function curvedPoints(from: Point, to: Point): number[] {
   return [from.x, from.y, cx, cy, to.x, to.y];
 }
 
+/** Returns the anchor in the list closest to the given point. */
+function closestAnchorToPoint(anchors: Point[], point: Point): Point {
+  let best = anchors[0];
+  let bestD = dist2(best, point);
+  for (let i = 1; i < anchors.length; i++) {
+    const d = dist2(anchors[i], point);
+    if (d < bestD) {
+      bestD = d;
+      best = anchors[i];
+    }
+  }
+  return best;
+}
+
 interface ConnectorsLayerProps {
   connectors: ConnectorElement[];
   notes: StickyNoteElement[];
   shapes: ShapeElement[];
+  /** When set, the connector tool has picked a first endpoint; show preview to cursor. */
+  connectorFrom?: { id: string; type: ConnectorElement["fromType"] } | null;
+  /** Board-space cursor position while drawing a connector (other end of preview). */
+  connectorPreviewTo?: { x: number; y: number } | null;
   /** Called with board-space midpoint coordinates of the connector. */
   onRequestEditLabel?: (connectorId: string, boardMidX: number, boardMidY: number, label: string) => void;
   /** ID of the connector whose label is currently being edited. */
@@ -138,6 +156,8 @@ export function ConnectorsLayer({
   connectors,
   notes,
   shapes,
+  connectorFrom,
+  connectorPreviewTo,
   onRequestEditLabel,
   editingConnectorId,
   selectedConnectorId,
@@ -172,8 +192,34 @@ export function ConnectorsLayer({
 
   const hasHandler = !!(onRequestEditLabel || onSelectConnector);
 
+  const previewLine = (() => {
+    if (!connectorFrom || !connectorPreviewTo) return null;
+    const fromAnchors = getAnchors(connectorFrom.id, connectorFrom.type);
+    if (!fromAnchors || !fromAnchors.length) return null;
+    const from = closestAnchorToPoint(fromAnchors, connectorPreviewTo);
+    const to = connectorPreviewTo;
+    const stroke = "#5d4037";
+    const strokeWidth = 2;
+    return (
+      <Arrow
+        key="connector-preview"
+        points={[from.x, from.y, to.x, to.y]}
+        stroke={stroke}
+        fill={stroke}
+        strokeWidth={strokeWidth}
+        pointerLength={10}
+        pointerWidth={10}
+        pointerAtBeginning={false}
+        pointerAtEnding={true}
+        listening={false}
+        opacity={0.85}
+      />
+    );
+  })();
+
   return (
     <Layer listening={hasHandler} x={x} y={y} scaleX={scaleX} scaleY={scaleY}>
+      {previewLine}
       {connectors.map((conn) => {
         const fromAnchors = getAnchors(conn.fromId, conn.fromType);
         const toAnchors = getAnchors(conn.toId, conn.toType);

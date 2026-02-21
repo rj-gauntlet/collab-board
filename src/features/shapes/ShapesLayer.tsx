@@ -13,6 +13,8 @@ interface ShapesLayerProps {
   boardId: string;
   userId: string;
   shapes: ShapeElement[];
+  /** ID of the shape currently chosen as connector source (show "connecting from" highlight). */
+  connectorFromId?: string | null;
   selectedIds: Set<string>;
   onSelectShape: (id: string, addToSelection: boolean) => void;
   onShapeUpdate: (shape: ShapeElement) => void;
@@ -31,6 +33,7 @@ export function ShapesLayer({
   boardId,
   userId,
   shapes,
+  connectorFromId,
   selectedIds,
   onSelectShape,
   onShapeUpdate,
@@ -128,6 +131,7 @@ export function ShapesLayer({
             key={shape.id}
             shape={shape}
             isSelected={selectedIds.has(shape.id)}
+            isConnectorFrom={shape.id === connectorFromId}
             isMultiSelectMode={isMultiSelect}
             onSelect={(shiftKey) => onSelectShape(shape.id, shiftKey)}
             onRegisterSelectRef={onRegisterSelectRef}

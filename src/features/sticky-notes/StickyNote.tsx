@@ -14,6 +14,8 @@ interface StickyNoteProps {
   note: StickyNoteElement;
   isEditing: boolean;
   isSelected?: boolean;
+  /** When true, this note is the connector "from" endpoint (show connecting-from highlight). */
+  isConnectorFrom?: boolean;
   isMultiSelectMode?: boolean;
   onSelect?: (shiftKey: boolean) => void;
   onEditStart: () => void;
@@ -30,6 +32,7 @@ export function StickyNote({
   note,
   isEditing,
   isSelected = false,
+  isConnectorFrom = false,
   isMultiSelectMode = false,
   onSelect,
   onEditStart,
@@ -136,8 +139,9 @@ export function StickyNote({
           width={note.width}
           height={note.height}
           fill={note.color}
-          stroke={isSelected ? "#ff8f00" : "#d4d4d8"}
-          strokeWidth={isSelected ? 2 : 1}
+          stroke={isConnectorFrom ? "#ff8f00" : isSelected ? "#ff8f00" : "#d4d4d8"}
+          strokeWidth={isConnectorFrom ? 3 : isSelected ? 2 : 1}
+          dash={isConnectorFrom ? [6, 4] : undefined}
           shadowColor="rgba(0,0,0,0.2)"
           shadowBlur={4}
           shadowOffsetY={2}

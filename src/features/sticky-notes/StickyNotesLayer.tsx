@@ -19,6 +19,8 @@ interface StickyNotesLayerProps {
   boardId: string;
   userId: string;
   notes: StickyNoteElement[];
+  /** ID of the note currently chosen as connector source (show "connecting from" highlight). */
+  connectorFromId?: string | null;
   editingNoteId: string | null;
   onEditingNoteIdChange: (id: string | null) => void;
   selectedIds: Set<string>;
@@ -39,6 +41,7 @@ export function StickyNotesLayer({
   boardId,
   userId,
   notes,
+  connectorFromId,
   editingNoteId,
   onEditingNoteIdChange,
   selectedIds,
@@ -216,6 +219,7 @@ export function StickyNotesLayer({
             note={note}
             isEditing={editingNoteId === note.id}
             isSelected={selectedIds.has(note.id)}
+            isConnectorFrom={note.id === connectorFromId}
             isMultiSelectMode={selectedIds.size > 1}
             onSelect={(shiftKey) => onSelectNote(note.id, shiftKey)}
             onEditStart={() => onEditingNoteIdChange(note.id)}

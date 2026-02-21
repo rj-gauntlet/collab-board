@@ -12,6 +12,8 @@ type ShapeUpdate = Partial<
 interface ShapeNodeProps {
   shape: ShapeElement;
   isSelected: boolean;
+  /** When true, this shape is the connector "from" endpoint (show connecting-from highlight). */
+  isConnectorFrom?: boolean;
   isMultiSelectMode?: boolean;
   onSelect: (shiftKey: boolean) => void;
   onRegisterSelectRef?: (id: string, node: Konva.Node | null) => void;
@@ -27,6 +29,7 @@ interface ShapeNodeProps {
 export function ShapeNode({
   shape,
   isSelected,
+  isConnectorFrom = false,
   isMultiSelectMode = false,
   onSelect,
   onRegisterSelectRef,
@@ -111,8 +114,9 @@ export function ShapeNode({
 
   const commonProps = {
     fill: shape.fill,
-    stroke: shape.stroke,
-    strokeWidth: shape.strokeWidth,
+    stroke: isConnectorFrom ? "#ff8f00" : shape.stroke,
+    strokeWidth: isConnectorFrom ? (shape.strokeWidth ?? 1) + 2 : shape.strokeWidth,
+    dash: isConnectorFrom ? [6, 4] as number[] : undefined,
   };
 
   const renderShapeContent = () => {

@@ -260,6 +260,7 @@ export const WhiteboardCanvas = forwardRef<
     id: string;
     type: "note" | "shape";
   } | null>(null);
+  const [connectorPreviewTo, setConnectorPreviewTo] = useState<{ x: number; y: number } | null>(null);
   const [draggingState, setDraggingState] = useState<{
     isDragging: boolean;
     elementId: string | null;
@@ -339,6 +340,13 @@ export const WhiteboardCanvas = forwardRef<
     draggingState.x,
     draggingState.y
   );
+
+  useEffect(() => {
+    if (activeTool !== "connector") {
+      setConnectorFrom(null);
+      setConnectorPreviewTo(null);
+    }
+  }, [activeTool]);
 
   // ── Refs (populated after derived-state computation each render) ────────────
   const notesRef = useRef<StickyNoteElement[]>([]);
@@ -1707,6 +1715,7 @@ export const WhiteboardCanvas = forwardRef<
           setSelectedIds(new Set());
         } else if (activeTool === "connector") {
           setConnectorFrom(null);
+          setConnectorPreviewTo(null);
           setSelectedIds(new Set());
           setSelectionBox(null);
         } else {
@@ -1733,6 +1742,7 @@ export const WhiteboardCanvas = forwardRef<
               );
             }
             setConnectorFrom(null);
+            setConnectorPreviewTo(null);
           } else {
             setConnectorFrom({ id: el.id, type: el.type });
           }
@@ -1782,6 +1792,9 @@ export const WhiteboardCanvas = forwardRef<
       if (pos) {
         const { x, y } = screenToBoard(pos.x, pos.y);
         syncCursor(x, y);
+        if (activeTool === "connector" && connectorFrom) {
+          setConnectorPreviewTo({ x, y });
+        }
       }
       if (selectionBox && pos) {
         const { x, y } = screenToBoard(pos.x, pos.y);
@@ -1793,7 +1806,7 @@ export const WhiteboardCanvas = forwardRef<
         handlePanMove(evt);
       }
     },
-    [activeTool, syncCursor, handlePanMove, screenToBoard, selectionBox]
+    [activeTool, connectorFrom, syncCursor, handlePanMove, screenToBoard, selectionBox]
   );
 
   const handleStageMouseUp = useCallback(() => {
@@ -1879,7 +1892,13 @@ export const WhiteboardCanvas = forwardRef<
 
       // Shortcuts modal
       if (e.key === "?") { e.preventDefault(); setShowShortcuts((v) => !v); return; }
-      if (e.key === "Escape") { setShowShortcuts(false); setSelectedConnectorId(null); return; }
+      if (e.key === "Escape") {
+        setShowShortcuts(false);
+        setSelectedConnectorId(null);
+        setConnectorFrom(null);
+        setConnectorPreviewTo(null);
+        return;
+      }
 
       if (e.key === "Delete" || e.key === "Backspace") {
         // Delete selected connector
@@ -1984,6 +2003,7 @@ export const WhiteboardCanvas = forwardRef<
           boardId={boardId}
           userId={userId}
           notes={notes}
+          connectorFromId={connectorFrom?.id ?? undefined}
           editingNoteId={editingNoteId}
           onEditingNoteIdChange={setEditingNoteId}
           selectedIds={selectedIds}
@@ -2016,6 +2036,7 @@ export const WhiteboardCanvas = forwardRef<
           boardId={boardId}
           userId={userId}
           shapes={shapes}
+          connectorFromId={connectorFrom?.id ?? undefined}
           selectedIds={selectedIds}
           onSelectShape={handleSelectShape}
           onShapeUpdate={handleShapeUpdate}
@@ -2078,6 +2099,8 @@ export const WhiteboardCanvas = forwardRef<
           connectors={connectors}
           notes={notes}
           shapes={shapes}
+          connectorFrom={connectorFrom}
+          connectorPreviewTo={connectorPreviewTo}
           onRequestEditLabel={(connectorId, boardMidX, boardMidY, label) =>
             setEditingConnectorLabel({ connectorId, boardMidX, boardMidY, label })
           }
