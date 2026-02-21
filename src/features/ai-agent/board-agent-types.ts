@@ -140,6 +140,8 @@ export type BoardAgentToolName =
   | "create_frame"
   | "create_frames"
   | "create_flowchart"
+  | "create_user_journey_map"
+  | "create_swot_analysis"
   | "create_connector"
   | "move_elements"
   | "update_elements"

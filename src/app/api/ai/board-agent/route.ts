@@ -18,9 +18,9 @@ Frames (containers):
 - Elements inside a frame have "parentFrameId" set to that frame's id. Use this to know which sticky notes/shapes belong to which frame (e.g. "add a note to the Strengths frame" = find the frame with title "Strengths", then create a note with x,y inside that frame's content area).
 - To add content inside a frame: use the frame's id from board state and place items with x between frame.x and frame.x+width minus item width, and y at least frame.y+28 (e.g. frame.y+36 for padding). Example: frame at 100,100 320x200 → content area x 100–320, y from 128; first note at (116, 144).
 - Single frame: use create_frame. Two or more frames: use create_frames with items array, different x so they sit side by side (e.g. x: 100, 420, 740 for three).
-- Templates: "SWOT analysis" = create_frames with 4 items: Strengths, Weaknesses, Opportunities, Threats in 2x2 (e.g. Strengths 100,100 / Weaknesses 420,100 / Opportunities 100,340 / Threats 420,340). Add notes inside each using that frame's bounds and y >= frame.y+36.
+- SWOT analysis: When the user asks for a "SWOT analysis", "SWOT", or "SWOT template" use the create_swot_analysis tool. It creates 4 quadrants (Strengths, Weaknesses, Opportunities, Threats) in 2x2 with placeholder notes in each. Pass notesPerQuadrant (1–5, default 3) to set how many empty notes per quadrant. Do not use create_frames + create_sticky_note for SWOT—use create_swot_analysis so quadrants and notes are created together.
 - "Retrospective" = create_frames with 3 items: "What Went Well", "What Didn't Go Well", "Action Items", x: 100, 420, 740.
-- "User journey with N stages" = create_frames with N items; optionally connect consecutive frames with create_connector using their ids from board state.
+- User journey map: When the user asks for a "user journey map", "journey map", or "customer journey" use the create_user_journey_map tool. It creates stage frames in a row, standard lanes (Actions, Touchpoints, Thoughts, Pain points, Opportunities) as rows inside each stage, and arrows between stages. Pass stages: array of stage names in order (e.g. ["Awareness", "Consideration", "Decision", "Purchase", "Loyalty"]); omit for default. Pass lanes: array of row names (e.g. ["Actions", "Touchpoints", "Thoughts", "Pain points", "Opportunities"]); omit for default. Use the exact stage/lane names the user gives when they specify them.
 - resize_frame_to_fit: use when the user asks to resize a frame to fit its contents. Elements with that frame's id as parentFrameId are considered inside it.
 
 Referring to elements:
@@ -38,7 +38,9 @@ IMPORTANT: You MUST use the provided tools to make changes. Do not only describe
 - For multiple shapes at once (e.g. "4 circles", "2x2 grid of rectangles") use create_shapes with an items array.
 - To connect two elements: use create_connector with fromId and toId. You can set connector appearance: stroke (color, e.g. #3b82f6 or red), strokeWidth (thickness), dashed, curved, bidirectional, label, style (line or arrow). To change an existing connector's color, thickness, or style use update_elements with the connector's id and stroke, strokeWidth, dashed, curved, bidirectional, label, or style.
 
-Flowchart: When the user asks for a flowchart, use create_flowchart. If they specify node names (e.g. "Start, Consideration, Validation, Decision and Success"), pass those exact names in order as the labels array: create_flowchart({ labels: ["Start", "Consideration", "Validation", "Decision", "Success"] }). Use the order the user gives. If they do not specify node names, omit the labels parameter to get the default (Start, Step 1, Step 2, End). Always use create_flowchart so the frame and arrows are included; do not use create_sticky_note alone for flowcharts.`;
+Flowchart: When the user asks for a flowchart, use create_flowchart.
+User journey map: When the user asks for a user journey map, customer journey, or journey map, use create_user_journey_map so they get stages, lanes, and connectors in one step.
+SWOT: When the user asks for a SWOT analysis, SWOT, or SWOT template, use create_swot_analysis so they get all 4 quadrants with placeholder notes in one step. Optionally pass notesPerQuadrant (e.g. 3 or 4) to control how many notes per quadrant. If they specify stage names (e.g. "Discovery, Sign-up, Onboarding, Usage, Support") pass those as stages. If they specify lane/row names pass those as lanes. Otherwise omit parameters for the default robust template. If they specify node names (e.g. "Start, Consideration, Validation, Decision and Success"), pass those exact names in order as the labels array: create_flowchart({ labels: ["Start", "Consideration", "Validation", "Decision", "Success"] }). Use the order the user gives. If they do not specify node names, omit the labels parameter to get the default (Start, Step 1, Step 2, End). Always use create_flowchart so the frame and arrows are included; do not use create_sticky_note alone for flowcharts.`;
 
 function buildSystemPrompt(boardState: BoardStateSummary[]): string {
   const stateJson =
@@ -274,6 +276,40 @@ export async function POST(req: Request) {
                 type: "array",
                 items: { type: "string" },
                 description: "Node labels in order, top to bottom (e.g. ['Start', 'Consideration', 'Validation', 'Decision', 'Success']). Omit for default 4-node template.",
+              },
+            },
+          }),
+          execute: async () => "Done.",
+        }),
+        create_user_journey_map: tool({
+          description:
+            "Create a full user journey map: stage frames in a row, lane rows (Actions, Touchpoints, Thoughts, Pain points, Opportunities) inside each stage, and arrows between stages. Pass stages: array of stage names in order (e.g. ['Awareness', 'Consideration', 'Decision', 'Purchase', 'Loyalty']). Pass lanes: array of row/lane names (e.g. ['Actions', 'Touchpoints', 'Thoughts', 'Pain points', 'Opportunities']). Omit both for the default robust template. Use when the user asks for a user journey map, customer journey, or journey map.",
+          parameters: jsonSchema<{ stages?: string[]; lanes?: string[] }>({
+            type: "object",
+            properties: {
+              stages: {
+                type: "array",
+                items: { type: "string" },
+                description: "Stage names left to right (e.g. Awareness, Consideration, Decision, Purchase, Loyalty). Omit for default.",
+              },
+              lanes: {
+                type: "array",
+                items: { type: "string" },
+                description: "Row names top to bottom (e.g. Actions, Touchpoints, Thoughts, Pain points, Opportunities). Omit for default.",
+              },
+            },
+          }),
+          execute: async () => "Done.",
+        }),
+        create_swot_analysis: tool({
+          description:
+            "Create a full SWOT analysis: 4 quadrants in 2x2 layout (Strengths top-left, Weaknesses top-right, Opportunities bottom-left, Threats bottom-right), each with placeholder sticky notes ready to fill. Pass notesPerQuadrant (1–5, default 3) to set how many empty notes per quadrant. Use when the user asks for a SWOT analysis, SWOT, or SWOT template.",
+          parameters: jsonSchema<{ notesPerQuadrant?: number }>({
+            type: "object",
+            properties: {
+              notesPerQuadrant: {
+                type: "number",
+                description: "Number of placeholder notes per quadrant (1–5). Omit for default 3.",
               },
             },
           }),

@@ -140,6 +140,10 @@ export interface WhiteboardCanvasHandle {
   clearCanvas: () => Promise<void>;
   /** Create a flowchart: one frame, sticky notes with optional labels (default: Start, Step 1, Step 2, End), and arrows between them. */
   createFlowchart: (labels?: string[]) => void;
+  /** Create a user journey map: stage frames in a row, lane notes inside each, arrows between stages. */
+  createUserJourneyMap: (stages?: string[], lanes?: string[]) => void;
+  /** Create a SWOT analysis: 4 quadrants (Strengths, Weaknesses, Opportunities, Threats) with placeholder notes in each. */
+  createSwotAnalysis: (notesPerQuadrant?: number) => void;
   deleteSelection: () => void;
   exportImage: () => void;
   undo: () => void;
@@ -992,6 +996,174 @@ export const WhiteboardCanvas = forwardRef<
     height,
   ]);
 
+  const DEFAULT_JOURNEY_STAGES = ["Awareness", "Consideration", "Decision", "Purchase", "Loyalty"];
+  const DEFAULT_JOURNEY_LANES = ["Actions", "Touchpoints", "Thoughts", "Pain points", "Opportunities"];
+
+  const createUserJourneyMap = useCallback((stages?: string[], lanes?: string[]) => {
+    captureSnapshot();
+    const stageTitles = (stages && stages.length >= 2 ? stages : DEFAULT_JOURNEY_STAGES).map((t) => t.trim()).filter(Boolean);
+    const laneTitles = (lanes && lanes.length >= 1 ? lanes : DEFAULT_JOURNEY_LANES).map((t) => t.trim()).filter(Boolean);
+    if (stageTitles.length < 2) return;
+
+    const FRAME_W = 220;
+    const LANE_H = 52;
+    const PAD = 16;
+    const GAP_FRAMES = 24;
+    const LANE_GAP = 8;
+    const TITLE_BAR = 28;
+
+    const frameHeight = TITLE_BAR + PAD * 2 + laneTitles.length * (LANE_H + LANE_GAP) - LANE_GAP;
+    const totalWidth = stageTitles.length * FRAME_W + (stageTitles.length - 1) * GAP_FRAMES;
+    const boardCenterX = (-stageX + width / 2) / scale;
+    const boardCenterY = (-stageY + height / 2) / scale;
+    const startX = boardCenterX - totalWidth / 2;
+    const startY = boardCenterY - frameHeight / 2;
+
+    const frameElements: FrameElement[] = [];
+    const allNotes: StickyNoteElement[] = [];
+    const firstNoteIdPerStage: string[] = [];
+
+    for (let i = 0; i < stageTitles.length; i++) {
+      const fx = startX + i * (FRAME_W + GAP_FRAMES);
+      const fy = startY;
+      const frame = createDefaultFrame(fx, fy, userId);
+      frame.width = FRAME_W;
+      frame.height = frameHeight;
+      frame.title = stageTitles[i];
+      frameElements.push(frame);
+
+      for (let j = 0; j < laneTitles.length; j++) {
+        const nx = fx + PAD;
+        const ny = fy + TITLE_BAR + PAD + j * (LANE_H + LANE_GAP);
+        const note = createDefaultNote(nx, ny, userId);
+        const fullNote: StickyNoteElement = {
+          ...note,
+          text: laneTitles[j],
+          width: FRAME_W - PAD * 2,
+          height: LANE_H,
+        };
+        allNotes.push(fullNote);
+        if (j === 0) firstNoteIdPerStage.push(fullNote.id);
+      }
+    }
+
+    setOptimisticFrames((prev) => [...prev, ...frameElements]);
+    setOptimisticNotes((prev) => [...prev, ...allNotes]);
+
+    for (const frame of frameElements) {
+      persistFrame(boardId, frame).catch((err) => {
+        console.error("Failed to create journey map frame:", err);
+        setOptimisticFrames((prev) => prev.filter((f) => f.id !== frame.id));
+      });
+    }
+    for (const note of allNotes) {
+      persistNote(boardId, note).catch((err) => {
+        console.error("Failed to create journey map note:", err);
+        setOptimisticNotes((prev) => prev.filter((n) => n.id !== note.id));
+      });
+    }
+
+    for (let i = 0; i < firstNoteIdPerStage.length - 1; i++) {
+      const conn = createDefaultConnector(
+        firstNoteIdPerStage[i],
+        firstNoteIdPerStage[i + 1],
+        "note",
+        "note",
+        userId,
+        "arrow"
+      );
+      persistConnector(boardId, conn).catch((err) =>
+        console.error("Failed to create journey map connector:", err)
+      );
+    }
+  }, [
+    boardId,
+    userId,
+    captureSnapshot,
+    stageX,
+    stageY,
+    scale,
+    width,
+    height,
+  ]);
+
+  const SWOT_QUADRANTS = ["Strengths", "Weaknesses", "Opportunities", "Threats"];
+
+  const createSwotAnalysis = useCallback((notesPerQuadrant: number = 3) => {
+    captureSnapshot();
+    const n = Math.min(Math.max(1, Math.floor(notesPerQuadrant)), 5);
+    const FRAME_W = 320;
+    const GAP = 24;
+    const TITLE_BAR = 28;
+    const PAD = 16;
+    const NOTE_H = 64;
+    const NOTE_GAP = 10;
+    const contentHeight = PAD + n * NOTE_H + (n - 1) * NOTE_GAP + PAD;
+    const FRAME_H = TITLE_BAR + contentHeight;
+    const totalW = FRAME_W * 2 + GAP;
+    const totalH = FRAME_H * 2 + GAP;
+    const boardCenterX = (-stageX + width / 2) / scale;
+    const boardCenterY = (-stageY + height / 2) / scale;
+    const startX = boardCenterX - totalW / 2;
+    const startY = boardCenterY - totalH / 2;
+
+    const positions: Array<{ x: number; y: number }> = [
+      { x: startX, y: startY },
+      { x: startX + FRAME_W + GAP, y: startY },
+      { x: startX, y: startY + FRAME_H + GAP },
+      { x: startX + FRAME_W + GAP, y: startY + FRAME_H + GAP },
+    ];
+
+    const frames: FrameElement[] = [];
+    const allNotes: StickyNoteElement[] = [];
+
+    for (let q = 0; q < 4; q++) {
+      const fx = positions[q].x;
+      const fy = positions[q].y;
+      const frame = createDefaultFrame(fx, fy, userId);
+      frame.width = FRAME_W;
+      frame.height = FRAME_H;
+      frame.title = SWOT_QUADRANTS[q];
+      frames.push(frame);
+
+      for (let i = 0; i < n; i++) {
+        const note = createDefaultNote(fx + PAD, fy + TITLE_BAR + PAD + i * (NOTE_H + NOTE_GAP), userId);
+        const fullNote: StickyNoteElement = {
+          ...note,
+          text: "",
+          width: FRAME_W - PAD * 2,
+          height: NOTE_H,
+        };
+        allNotes.push(fullNote);
+      }
+    }
+
+    setOptimisticFrames((prev) => [...prev, ...frames]);
+    setOptimisticNotes((prev) => [...prev, ...allNotes]);
+
+    for (const frame of frames) {
+      persistFrame(boardId, frame).catch((err) => {
+        console.error("Failed to create SWOT frame:", err);
+        setOptimisticFrames((prev) => prev.filter((f) => f.id !== frame.id));
+      });
+    }
+    for (const note of allNotes) {
+      persistNote(boardId, note).catch((err) => {
+        console.error("Failed to create SWOT note:", err);
+        setOptimisticNotes((prev) => prev.filter((n) => n.id !== note.id));
+      });
+    }
+  }, [
+    boardId,
+    userId,
+    captureSnapshot,
+    stageX,
+    stageY,
+    scale,
+    width,
+    height,
+  ]);
+
   const createConnectorsFromAI = useCallback(
     (items: Array<{
       fromId: string;
@@ -1698,6 +1870,8 @@ export const WhiteboardCanvas = forwardRef<
       distributeElementsByAgent,
       clearCanvas,
       createFlowchart,
+      createUserJourneyMap,
+      createSwotAnalysis,
       deleteSelection: handleDeleteSelection,
       exportImage: () => {
         const stage = stageRef.current;
@@ -1722,6 +1896,8 @@ export const WhiteboardCanvas = forwardRef<
       distributeElementsByAgent,
       clearCanvas,
       createFlowchart,
+      createUserJourneyMap,
+      createSwotAnalysis,
       handleDeleteSelection,
       undoAction,
       redoAction,
