@@ -20,6 +20,7 @@ import {
   Sparkles,
   PanelLeftClose,
   PanelLeft,
+  Workflow,
 } from "lucide-react";
 import type { Tool } from "./types";
 
@@ -38,6 +39,8 @@ interface ToolbarProps {
   onSnapToggle?: () => void;
   onCluster?: () => void;
   clusterLoading?: boolean;
+  /** Create a flowchart template (frame + notes + connectors) at viewport center. */
+  onCreateFlowchart?: () => void;
 }
 
 export function Toolbar({
@@ -54,6 +57,7 @@ export function Toolbar({
   onSnapToggle,
   onCluster,
   clusterLoading = false,
+  onCreateFlowchart,
 }: ToolbarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -161,6 +165,17 @@ export function Toolbar({
         <Layout size={18} />
         <span>Frame</span>
       </button>
+      {onCreateFlowchart && (
+        <button
+          type="button"
+          onClick={onCreateFlowchart}
+          className="flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-[#5d4037] transition-colors hover:bg-[#ffe0b2]"
+          title="Flowchart - Add a frame with sticky notes and connectors"
+        >
+          <Workflow size={18} />
+          <span>Flowchart</span>
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onToolChange("sticky-note")}

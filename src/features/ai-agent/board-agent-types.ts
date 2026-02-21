@@ -139,6 +139,7 @@ export type BoardAgentToolName =
   | "create_shapes"
   | "create_frame"
   | "create_frames"
+  | "create_flowchart"
   | "create_connector"
   | "move_elements"
   | "update_elements"

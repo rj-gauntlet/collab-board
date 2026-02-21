@@ -64,6 +64,28 @@ the identity that deploys to Cloud Run doesn’t have permission to set “Allow
 
 **Alternative (one-time, same project):** If you have Owner/Editor, you can allow public access on the existing Cloud Run service so the app is public, but **future rollouts** will still try to set IAM and can fail unless the deploy identity has `run.services.setIamPolicy`. Granting **Cloud Run Admin** to that identity is the reliable fix.
 
+### If Security tab keeps resetting to "Require authentication" on each push (App Hosting)
+
+When you push to GitHub, Firebase App Hosting deploys a new Cloud Run revision and the **Security** tab often resets to **Require authentication**. To fix this automatically:
+
+1. **Add a GitHub Actions secret**
+   - Create a GCP service account (or use an existing one) with **Cloud Run Admin** (`roles/run.admin`) on the project.
+   - Create a JSON key for that account: [IAM → Service Accounts → Keys → Add key](https://console.cloud.google.com/iam-admin/serviceaccounts?project=collab-board-rj).
+   - In GitHub: **Settings → Secrets and variables → Actions** → **New repository secret**.
+   - Name: `GCP_SA_KEY`, Value: paste the entire JSON key file.
+
+2. **Use the workflow in this repo**
+   - The workflow `.github/workflows/cloudrun-allow-unauthenticated.yml` runs on every push to `main` (after a short wait for the deploy to finish) and runs:
+     ```bash
+     gcloud run services add-iam-policy-binding collab-board \
+       --region=us-east4 --member="allUsers" --role="roles/run.invoker"
+     ```
+   - So the Cloud Run service stays **Allow unauthenticated** after each deploy.
+
+3. **Optional:** If your App Hosting backend uses a different Cloud Run service name or region, set repository **Variables**: `GCP_PROJECT_ID`, `CLOUD_RUN_SERVICE`, `CLOUD_RUN_REGION`.
+
+You can also run the workflow manually: **Actions → Cloud Run allow unauthenticated → Run workflow**.
+
 ---
 
 ## 3. Environment variables in production

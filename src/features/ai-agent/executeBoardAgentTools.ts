@@ -105,6 +105,11 @@ export function executeBoardAgentTools(
           }
           break;
         }
+        case "create_flowchart": {
+          const labels = inv.args.labels as string[] | undefined;
+          handle.createFlowchart(Array.isArray(labels) && labels.length >= 2 ? labels : undefined);
+          break;
+        }
         case "create_connector": {
           const fromId = inv.args.fromId as string;
           const toId = inv.args.toId as string;

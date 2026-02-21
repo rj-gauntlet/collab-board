@@ -1,0 +1,48 @@
+# After Firebase App Hosting deploys to Cloud Run on push, the service often
+# ends up with "Require authentication". This workflow re-applies the IAM
+# binding so the service allows unauthenticated (public) invocations.
+#
+# Required secret: GCP_SA_KEY = JSON key for a service account that has
+#   roles/run.admin (or at least run.services.setIamPolicy) on the project.
+# Optional: set GCP_PROJECT_ID, CLOUD_RUN_SERVICE, CLOUD_RUN_REGION in
+#   repo Variables if your service name/region differ.
+
+name: Cloud Run allow unauthenticated
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  set-invoker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for App Hosting deploy (push only)
+        if: github.event_name == 'push'
+        run: sleep 300
+        # App Hosting deploys to Cloud Run on push; wait so we set IAM on the new revision.
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID || 'collab-board-rj' }}
+
+      - name: Allow unauthenticated invocations on Cloud Run service
+        run: |
+          SERVICE="${{ vars.CLOUD_RUN_SERVICE || 'collab-board' }}"
+          REGION="${{ vars.CLOUD_RUN_REGION || 'us-east4' }}"
+          echo "Setting Cloud Run Invoker for allUsers on ${SERVICE} (${REGION})..."
+          gcloud run services add-iam-policy-binding "${SERVICE}" \
+            --region="${REGION}" \
+            --member="allUsers" \
+            --role="roles/run.invoker" \
+            --quiet
+        env:
+          CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT_ID || 'collab-board-rj' }}

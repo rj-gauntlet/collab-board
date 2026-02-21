@@ -36,7 +36,9 @@ IMPORTANT: You MUST use the provided tools to make changes. Do not only describe
 - For "NxM grid of sticky notes" use create_sticky_notes_grid with rows and columns. When the grid has a purpose (e.g. pros and cons, voting options, categories), pass labels with the text for each cell in row-major order so notes have the right content.
 - For "delete all", "clear the board", "remove everything", or "clear all elements" use clear_board (no parameters). Do not use delete_elements with a list of IDs for clearing the whole board—clear_board removes everything reliably.
 - For multiple shapes at once (e.g. "4 circles", "2x2 grid of rectangles") use create_shapes with an items array.
-- To connect two elements: use create_connector with fromId and toId. You can set connector appearance: stroke (color, e.g. #3b82f6 or red), strokeWidth (thickness), dashed, curved, bidirectional, label, style (line or arrow). To change an existing connector's color, thickness, or style use update_elements with the connector's id and stroke, strokeWidth, dashed, curved, bidirectional, label, or style.`;
+- To connect two elements: use create_connector with fromId and toId. You can set connector appearance: stroke (color, e.g. #3b82f6 or red), strokeWidth (thickness), dashed, curved, bidirectional, label, style (line or arrow). To change an existing connector's color, thickness, or style use update_elements with the connector's id and stroke, strokeWidth, dashed, curved, bidirectional, label, or style.
+
+Flowchart: When the user asks for a flowchart, use create_flowchart. If they specify node names (e.g. "Start, Consideration, Validation, Decision and Success"), pass those exact names in order as the labels array: create_flowchart({ labels: ["Start", "Consideration", "Validation", "Decision", "Success"] }). Use the order the user gives. If they do not specify node names, omit the labels parameter to get the default (Start, Step 1, Step 2, End). Always use create_flowchart so the frame and arrows are included; do not use create_sticky_note alone for flowcharts.`;
 
 function buildSystemPrompt(boardState: BoardStateSummary[]): string {
   const stateJson =
@@ -259,6 +261,21 @@ export async function POST(req: Request) {
               },
             },
             required: ["items"],
+          }),
+          execute: async () => "Done.",
+        }),
+        create_flowchart: tool({
+          description:
+            "Create a flowchart: one frame titled 'Flowchart', sticky notes in a vertical column with arrows between them. Pass labels: array of node names in order (e.g. ['Start', 'Consideration', 'Validation', 'Decision', 'Success']). Minimum 2 nodes. If the user does not specify node names, omit labels for default: Start, Step 1, Step 2, End. Use the exact names and order the user gives.",
+          parameters: jsonSchema<{ labels?: string[] }>({
+            type: "object",
+            properties: {
+              labels: {
+                type: "array",
+                items: { type: "string" },
+                description: "Node labels in order, top to bottom (e.g. ['Start', 'Consideration', 'Validation', 'Decision', 'Success']). Omit for default 4-node template.",
+              },
+            },
           }),
           execute: async () => "Done.",
         }),

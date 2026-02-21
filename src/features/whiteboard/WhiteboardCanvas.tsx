@@ -138,6 +138,8 @@ export interface WhiteboardCanvasHandle {
   resizeFrameToFitByAgent: (frameId: string, padding?: number) => void;
   distributeElementsByAgent: (ids: string[], direction: "horizontal" | "vertical", spacing?: number) => void;
   clearCanvas: () => Promise<void>;
+  /** Create a flowchart: one frame, sticky notes with optional labels (default: Start, Step 1, Step 2, End), and arrows between them. */
+  createFlowchart: (labels?: string[]) => void;
   deleteSelection: () => void;
   exportImage: () => void;
   undo: () => void;
@@ -926,6 +928,70 @@ export const WhiteboardCanvas = forwardRef<
     [boardId, userId]
   );
 
+  const DEFAULT_FLOWCHART_LABELS = ["Start", "Step 1", "Step 2", "End"];
+
+  const createFlowchart = useCallback((labels?: string[]) => {
+    captureSnapshot();
+    const nodeLabels = (labels && labels.length >= 2 ? labels : DEFAULT_FLOWCHART_LABELS).map((t) => t.trim()).filter(Boolean);
+    if (nodeLabels.length < 2) return;
+
+    const PAD = 24;
+    const TITLE_BAR = 28;
+    const NOTE_W = 140;
+    const NOTE_H = 80;
+    const GAP = 20;
+    const FRAME_WIDTH = 320;
+    const FRAME_HEIGHT = TITLE_BAR + PAD * 2 + nodeLabels.length * NOTE_H + (nodeLabels.length - 1) * GAP;
+
+    const boardCenterX = (-stageX + width / 2) / scale;
+    const boardCenterY = (-stageY + height / 2) / scale;
+    const frameX = boardCenterX - FRAME_WIDTH / 2;
+    const frameY = boardCenterY - FRAME_HEIGHT / 2;
+
+    const frame = createDefaultFrame(frameX, frameY, userId);
+    frame.width = FRAME_WIDTH;
+    frame.height = FRAME_HEIGHT;
+    frame.title = "Flowchart";
+
+    const noteY = (i: number) => frameY + TITLE_BAR + PAD + i * (NOTE_H + GAP);
+    const noteX = frameX + PAD;
+
+    const notes = nodeLabels.map((text, i) => ({
+      ...createDefaultNote(noteX, noteY(i), userId),
+      text,
+      width: NOTE_W,
+      height: NOTE_H,
+    }));
+
+    setOptimisticFrames((prev) => [...prev, frame]);
+    setOptimisticNotes((prev) => [...prev, ...notes]);
+
+    persistFrame(boardId, frame).catch((err) => {
+      console.error("Failed to create flowchart frame:", err);
+      setOptimisticFrames((prev) => prev.filter((f) => f.id !== frame.id));
+    });
+    for (const note of notes) {
+      persistNote(boardId, note).catch((err) => {
+        console.error("Failed to create flowchart note:", err);
+        setOptimisticNotes((prev) => prev.filter((n) => n.id !== note.id));
+      });
+    }
+
+    for (let i = 0; i < notes.length - 1; i++) {
+      const conn = createDefaultConnector(notes[i].id, notes[i + 1].id, "note", "note", userId, "arrow");
+      persistConnector(boardId, conn).catch((err) => console.error("Failed to create flowchart connector:", err));
+    }
+  }, [
+    boardId,
+    userId,
+    captureSnapshot,
+    stageX,
+    stageY,
+    scale,
+    width,
+    height,
+  ]);
+
   const createConnectorsFromAI = useCallback(
     (items: Array<{
       fromId: string;
@@ -1631,6 +1697,7 @@ export const WhiteboardCanvas = forwardRef<
       resizeFrameToFitByAgent,
       distributeElementsByAgent,
       clearCanvas,
+      createFlowchart,
       deleteSelection: handleDeleteSelection,
       exportImage: () => {
         const stage = stageRef.current;
@@ -1654,6 +1721,7 @@ export const WhiteboardCanvas = forwardRef<
       resizeFrameToFitByAgent,
       distributeElementsByAgent,
       clearCanvas,
+      createFlowchart,
       handleDeleteSelection,
       undoAction,
       redoAction,

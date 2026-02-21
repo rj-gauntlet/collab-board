@@ -434,6 +434,7 @@ export default function BoardPage() {
               onSnapToggle={() => setSnapEnabled((v) => !v)}
               onCluster={runSmartCluster}
               clusterLoading={smartClusterLoading}
+              onCreateFlowchart={() => canvasRef.current?.createFlowchart?.()}
             />
           </div>
         </div>
