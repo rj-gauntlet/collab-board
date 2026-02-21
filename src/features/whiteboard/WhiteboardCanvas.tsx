@@ -103,9 +103,36 @@ export interface WhiteboardCanvasHandle {
   createStickyNotesGridFromAI: (rows: number, columns: number, options?: { labels?: string[]; startX?: number; startY?: number; spacing?: number }) => void;
   createShapesFromAI: (items: Array<{ shapeType: "rect" | "circle" | "triangle"; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => void;
   createFramesFromAI: (items: Array<{ title: string; x?: number; y?: number; width?: number; height?: number }>) => void;
-  createConnectorsFromAI: (items: Array<{ fromId: string; toId: string; label?: string; style?: "line" | "arrow" }>) => void;
+  createConnectorsFromAI: (items: Array<{
+    fromId: string;
+    toId: string;
+    label?: string;
+    style?: "line" | "arrow";
+    stroke?: string;
+    strokeWidth?: number;
+    dashed?: boolean;
+    curved?: boolean;
+    bidirectional?: boolean;
+  }>) => void;
   moveElementsByAgent: (ids: string[], dx: number, dy: number) => void;
-  updateElementsByAgent: (updates: Array<{ id: string; text?: string; title?: string; color?: string; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => void;
+  updateElementsByAgent: (updates: Array<{
+    id: string;
+    text?: string;
+    title?: string;
+    color?: string;
+    fill?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    stroke?: string;
+    strokeWidth?: number;
+    dashed?: boolean;
+    curved?: boolean;
+    bidirectional?: boolean;
+    label?: string;
+    style?: "line" | "arrow";
+  }>) => void;
   deleteElementsByAgent: (ids: string[]) => void;
   arrangeGridByAgent: (ids: string[], columns?: number, spacing?: number) => void;
   resizeFrameToFitByAgent: (frameId: string, padding?: number) => void;
@@ -822,6 +849,13 @@ export const WhiteboardCanvas = forwardRef<
         type: "connector",
         fromId: c.fromId,
         toId: c.toId,
+        ...(c.label != null && c.label !== "" && { label: c.label }),
+        ...(c.style != null && { style: c.style }),
+        ...(c.stroke != null && { stroke: c.stroke }),
+        ...(c.strokeWidth != null && { strokeWidth: c.strokeWidth }),
+        ...(c.dashed != null && { dashed: c.dashed }),
+        ...(c.curved != null && { curved: c.curved }),
+        ...(c.bidirectional != null && { bidirectional: c.bidirectional }),
       });
     }
     return summaries;
@@ -885,7 +919,17 @@ export const WhiteboardCanvas = forwardRef<
   );
 
   const createConnectorsFromAI = useCallback(
-    (items: Array<{ fromId: string; toId: string; label?: string; style?: "line" | "arrow" }>) => {
+    (items: Array<{
+      fromId: string;
+      toId: string;
+      label?: string;
+      style?: "line" | "arrow";
+      stroke?: string;
+      strokeWidth?: number;
+      dashed?: boolean;
+      curved?: boolean;
+      bidirectional?: boolean;
+    }>) => {
       const noteIds = new Set(notesRef.current.map((n) => n.id));
       const shapeIds = new Set(shapesRef.current.map((s) => s.id));
       const inferType = (id: string): ConnectorElement["fromType"] =>
@@ -902,6 +946,11 @@ export const WhiteboardCanvas = forwardRef<
         const full: ConnectorElement = {
           ...connector,
           ...(item.label != null && { label: item.label }),
+          ...(item.stroke != null && { stroke: item.stroke }),
+          ...(item.strokeWidth != null && { strokeWidth: item.strokeWidth }),
+          ...(item.dashed != null && { dashed: item.dashed }),
+          ...(item.curved != null && { curved: item.curved }),
+          ...(item.bidirectional != null && { bidirectional: item.bidirectional }),
         };
         persistConnector(boardId, full).catch((err) =>
           console.error("Failed to create AI connector:", err)
@@ -947,9 +996,42 @@ export const WhiteboardCanvas = forwardRef<
   );
 
   const updateElementsByAgent = useCallback(
-    (updates: Array<{ id: string; text?: string; title?: string; color?: string; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => {
+    (updates: Array<{
+      id: string;
+      text?: string;
+      title?: string;
+      color?: string;
+      fill?: string;
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      stroke?: string;
+      strokeWidth?: number;
+      dashed?: boolean;
+      curved?: boolean;
+      bidirectional?: boolean;
+      label?: string;
+      style?: "line" | "arrow";
+    }>) => {
       const frames = framesRef.current;
       for (const u of updates) {
+        const connector = connectorsRef.current.find((c) => c.id === u.id);
+        if (connector) {
+          const updated: ConnectorElement = {
+            ...connector,
+            ...(u.stroke !== undefined && { stroke: u.stroke }),
+            ...(u.strokeWidth !== undefined && { strokeWidth: u.strokeWidth }),
+            ...(u.dashed !== undefined && { dashed: u.dashed }),
+            ...(u.curved !== undefined && { curved: u.curved }),
+            ...(u.bidirectional !== undefined && { bidirectional: u.bidirectional }),
+            ...(u.label !== undefined && { label: u.label }),
+            ...(u.style !== undefined && { style: u.style }),
+            updatedAt: Date.now(),
+          };
+          persistConnector(boardId, updated).catch(console.error);
+          continue;
+        }
         const note = notesRef.current.find((n) => n.id === u.id);
         if (note) {
           const updated = { ...note, ...u, updatedAt: Date.now() };

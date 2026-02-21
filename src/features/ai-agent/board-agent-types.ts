@@ -20,12 +20,19 @@ export interface BoardStateSummaryBounded {
   parentFrameId?: string;
 }
 
-/** Connectors have from/to, not a bounding box */
+/** Connectors have from/to and optional style properties */
 export interface BoardStateSummaryConnector {
   id: string;
   type: "connector";
   fromId: string;
   toId: string;
+  label?: string;
+  style?: "line" | "arrow";
+  stroke?: string;
+  strokeWidth?: number;
+  dashed?: boolean;
+  curved?: boolean;
+  bidirectional?: boolean;
 }
 
 export type BoardStateSummary = BoardStateSummaryBounded | BoardStateSummaryConnector;

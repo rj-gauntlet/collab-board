@@ -115,6 +115,11 @@ export function executeBoardAgentTools(
                 toId,
                 label: inv.args.label as string | undefined,
                 style: inv.args.style as "line" | "arrow" | undefined,
+                stroke: inv.args.stroke as string | undefined,
+                strokeWidth: inv.args.strokeWidth as number | undefined,
+                dashed: inv.args.dashed as boolean | undefined,
+                curved: inv.args.curved as boolean | undefined,
+                bidirectional: inv.args.bidirectional as boolean | undefined,
               },
             ]);
           }
@@ -140,6 +145,13 @@ export function executeBoardAgentTools(
             y?: number;
             width?: number;
             height?: number;
+            stroke?: string;
+            strokeWidth?: number;
+            dashed?: boolean;
+            curved?: boolean;
+            bidirectional?: boolean;
+            label?: string;
+            style?: "line" | "arrow";
           }>;
           if (Array.isArray(updates) && updates.length > 0) {
             handle.updateElementsByAgent(updates);

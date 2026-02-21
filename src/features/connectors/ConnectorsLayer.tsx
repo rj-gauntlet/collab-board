@@ -16,16 +16,67 @@ function bboxAnchors(x: number, y: number, w: number, h: number): Point[] {
     { x: cx, y },          // top
     { x: x + w, y: cy },   // right
     { x: cx, y: y + h },   // bottom
-    { x, y: cy },           // left
+    { x, y: cy },          // left
   ];
+}
+
+function rotatePoint(px: number, py: number, degrees: number): Point {
+  const rad = (degrees * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return { x: px * c - py * s, y: px * s + py * c };
+}
+
+/** Anchor points on the shape edge in group-local coords (origin at shape.x, shape.y). */
+function getShapeAnchors(shape: ShapeElement): Point[] {
+  const w = shape.width;
+  const h = shape.height;
+  const rotation = shape.rotation ?? 0;
+  const ox = shape.x;
+  const oy = shape.y;
+
+  let local: Point[];
+  if (shape.kind === "triangle") {
+    const r = Math.min(w, h) / 2;
+    const cx = w / 2;
+    const cy = h / 2;
+    // RegularPolygon: vertices at -90°, 30°, 150° (point-up)
+    const angles = [-90, 30, 150].map((deg) => (deg * Math.PI) / 180);
+    const vertices = angles.map((a) => ({
+      x: cx + r * Math.cos(a),
+      y: cy + r * Math.sin(a),
+    }));
+    // Anchor at midpoint of each side so connectors touch the triangle edges
+    local = [
+      { x: (vertices[0].x + vertices[1].x) / 2, y: (vertices[0].y + vertices[1].y) / 2 },
+      { x: (vertices[1].x + vertices[2].x) / 2, y: (vertices[1].y + vertices[2].y) / 2 },
+      { x: (vertices[2].x + vertices[0].x) / 2, y: (vertices[2].y + vertices[0].y) / 2 },
+    ];
+  } else if (shape.kind === "circle") {
+    const r = Math.min(w, h) / 2;
+    const angles = [0, 90, 180, 270].map((deg) => (deg * Math.PI) / 180);
+    local = angles.map((a) => ({
+      x: w / 2 + r * Math.cos(a),
+      y: h / 2 + r * Math.sin(a),
+    }));
+  } else {
+    // rect: cardinal midpoints of box
+    local = [
+      { x: w / 2, y: 0 },
+      { x: w, y: h / 2 },
+      { x: w / 2, y: h },
+      { x: 0, y: h / 2 },
+    ];
+  }
+
+  return local.map((p) => {
+    const rotated = rotation !== 0 ? rotatePoint(p.x, p.y, rotation) : p;
+    return { x: ox + rotated.x, y: oy + rotated.y };
+  });
 }
 
 function getNoteAnchors(note: StickyNoteElement): Point[] {
   return bboxAnchors(note.x, note.y, note.width, note.height);
-}
-
-function getShapeAnchors(shape: ShapeElement): Point[] {
-  return bboxAnchors(shape.x, shape.y, shape.width, shape.height);
 }
 
 function dist2(a: Point, b: Point): number {

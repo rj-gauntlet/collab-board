@@ -1,12 +1,16 @@
 "use client";
 
-import React, { useCallback, useState } from "react";
-import { Layer, Rect, Text } from "react-konva";
+import React, { useCallback, useState, useRef, useEffect } from "react";
+import { Layer, Rect, Text, Transformer } from "react-konva";
+import Konva from "konva";
 import { StickyNote } from "./StickyNote";
 import { useRemoteDragging } from "./useRemoteDragging";
 import { persistNote } from "./usePersistedNotes";
 import { snapPos } from "@/features/whiteboard/snapGrid";
 import type { StickyNoteElement } from "./types";
+
+const MIN_NOTE_WIDTH = 80;
+const MIN_NOTE_HEIGHT = 60;
 
 const PADDING = 8;
 const FONT_SIZE = 14;
@@ -50,7 +54,75 @@ export function StickyNotesLayer({
   scaleX = 1,
   scaleY = 1,
 }: StickyNotesLayerProps) {
+  const [selectedRefs, setSelectedRefs] = useState<Map<string, Konva.Node>>(new Map());
+  const multiTrRef = useRef<Konva.Transformer>(null);
   const remoteDragging = useRemoteDragging(boardId, userId);
+
+  const onRegisterSelectRef = useCallback((id: string, node: Konva.Node | null) => {
+    setSelectedRefs((prev) => {
+      const next = new Map(prev);
+      if (node) next.set(id, node);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (selectedIds.size <= 1) {
+      setSelectedRefs(new Map());
+    }
+  }, [selectedIds.size]);
+
+  useEffect(() => {
+    if (selectedIds.size > 1 && multiTrRef.current) {
+      const nodes = Array.from(selectedRefs.values()).filter(Boolean);
+      if (nodes.length > 0) {
+        multiTrRef.current.nodes(nodes);
+        multiTrRef.current.getLayer()?.batchDraw();
+      }
+    }
+  }, [selectedIds.size, selectedRefs]);
+
+  const handleMultiTransformEnd = useCallback(() => {
+    for (const id of selectedIds) {
+      const node = selectedRefs.get(id) as Konva.Group | undefined;
+      const note = notes.find((n) => n.id === id);
+      if (!node || !note) continue;
+      const sx = node.scaleX();
+      const sy = node.scaleY();
+      node.scaleX(1);
+      node.scaleY(1);
+      const updated: StickyNoteElement = {
+        ...note,
+        x: node.x(),
+        y: node.y(),
+        width: Math.max(MIN_NOTE_WIDTH, node.width() * sx),
+        height: Math.max(MIN_NOTE_HEIGHT, node.height() * sy),
+        updatedAt: Date.now(),
+      };
+      onNoteUpdate(updated);
+      persistNote(boardId, updated).catch((err) =>
+        console.error("Failed to persist note resize:", err)
+      );
+    }
+    onDragEnd();
+  }, [selectedIds, selectedRefs, notes, boardId, onNoteUpdate, onDragEnd]);
+
+  const handleResizeEnd = useCallback(
+    (note: StickyNoteElement, updates: { x: number; y: number; width: number; height: number }) => {
+      const updated: StickyNoteElement = {
+        ...note,
+        ...updates,
+        updatedAt: Date.now(),
+      };
+      onNoteUpdate(updated);
+      persistNote(boardId, updated).catch((err) =>
+        console.error("Failed to persist note resize:", err)
+      );
+      onDragEnd();
+    },
+    [boardId, onNoteUpdate, onDragEnd]
+  );
 
   const remoteDraggingByElementId = new Map(
     remoteDragging.map((d) => [d.elementId, d])
@@ -144,9 +216,12 @@ export function StickyNotesLayer({
             note={note}
             isEditing={editingNoteId === note.id}
             isSelected={selectedIds.has(note.id)}
+            isMultiSelectMode={selectedIds.size > 1}
             onSelect={(shiftKey) => onSelectNote(note.id, shiftKey)}
             onEditStart={() => onEditingNoteIdChange(note.id)}
             onEditEnd={(text) => handleEditEnd(note, text)}
+            onResizeEnd={(updates) => handleResizeEnd(note, updates)}
+            onRegisterSelectRef={onRegisterSelectRef}
             onContextMenu={(evt) => onNoteContextMenu?.(note, evt)}
             onDragStart={() => onDragStart(note.id)}
             onDragMove={(x, y) => onDragMove(note.id, x, y)}
@@ -154,6 +229,21 @@ export function StickyNotesLayer({
           />
         );
       })}
+      {selectedIds.size > 1 && Array.from(selectedRefs.values()).filter(Boolean).length > 0 && (
+        <Transformer
+          ref={multiTrRef}
+          name="transformer"
+          flipEnabled={false}
+          rotateEnabled={false}
+          boundBoxFunc={(oldBox, newBox) => {
+            if (Math.abs(newBox.width) < MIN_NOTE_WIDTH || Math.abs(newBox.height) < MIN_NOTE_HEIGHT) {
+              return oldBox;
+            }
+            return newBox;
+          }}
+          onTransformEnd={handleMultiTransformEnd}
+        />
+      )}
     </Layer>
   );
 }

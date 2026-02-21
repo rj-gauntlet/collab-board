@@ -35,7 +35,8 @@ IMPORTANT: You MUST use the provided tools to make changes. Do not only describe
 - For "arrange in a grid" use arrange_grid with the element ids and optional columns/spacing.
 - For "NxM grid of sticky notes" use create_sticky_notes_grid with rows and columns. When the grid has a purpose (e.g. pros and cons, voting options, categories), pass labels with the text for each cell in row-major order so notes have the right content.
 - For "delete all", "clear the board", "remove everything", or "clear all elements" use clear_board (no parameters). Do not use delete_elements with a list of IDs for clearing the whole board—clear_board removes everything reliably.
-- For multiple shapes at once (e.g. "4 circles", "2x2 grid of rectangles") use create_shapes with an items array.`;
+- For multiple shapes at once (e.g. "4 circles", "2x2 grid of rectangles") use create_shapes with an items array.
+- To connect two elements: use create_connector with fromId and toId. You can set connector appearance: stroke (color, e.g. #3b82f6 or red), strokeWidth (thickness), dashed, curved, bidirectional, label, style (line or arrow). To change an existing connector's color, thickness, or style use update_elements with the connector's id and stroke, strokeWidth, dashed, curved, bidirectional, label, or style.`;
 
 function buildSystemPrompt(boardState: BoardStateSummary[]): string {
   const stateJson =
@@ -263,12 +264,17 @@ export async function POST(req: Request) {
         }),
         create_connector: tool({
           description:
-            "Draw a line/arrow between two elements. Use element IDs from board state.",
+            "Draw a connector (line or arrow) between two elements. Pass fromId and toId from board state. Optional: label (text on line), style ('line' or 'arrow'), stroke (color, e.g. #3b82f6 or 'red'), strokeWidth (number, e.g. 2 or 4), dashed (boolean), curved (boolean), bidirectional (boolean for arrows on both ends).",
           parameters: jsonSchema<{
             fromId: string;
             toId: string;
             label?: string;
             style?: "line" | "arrow";
+            stroke?: string;
+            strokeWidth?: number;
+            dashed?: boolean;
+            curved?: boolean;
+            bidirectional?: boolean;
           }>({
             type: "object",
             properties: {
@@ -276,6 +282,11 @@ export async function POST(req: Request) {
               toId: { type: "string" },
               label: { type: "string" },
               style: { type: "string", enum: ["line", "arrow"] },
+              stroke: { type: "string", description: "Line color (hex or name)" },
+              strokeWidth: { type: "number", description: "Line thickness in px" },
+              dashed: { type: "boolean" },
+              curved: { type: "boolean" },
+              bidirectional: { type: "boolean" },
             },
             required: ["fromId", "toId"],
           }),
@@ -300,7 +311,7 @@ export async function POST(req: Request) {
         }),
         update_elements: tool({
           description:
-            "Update properties of elements by ID (e.g. text, title, color, position, size).",
+            "Update properties of elements by ID. For notes: text, color, x, y, width, height. For shapes: fill, x, y, width, height. For text: text, fill, x, y. For frames: title, x, y, width, height. For connectors: stroke (color), strokeWidth (thickness), dashed, curved, bidirectional, label, style ('line' or 'arrow').",
           parameters: jsonSchema<{
             updates: Array<{
               id: string;
@@ -312,6 +323,13 @@ export async function POST(req: Request) {
               y?: number;
               width?: number;
               height?: number;
+              stroke?: string;
+              strokeWidth?: number;
+              dashed?: boolean;
+              curved?: boolean;
+              bidirectional?: boolean;
+              label?: string;
+              style?: "line" | "arrow";
             }>;
           }>({
             type: "object",
@@ -330,6 +348,13 @@ export async function POST(req: Request) {
                     y: { type: "number" },
                     width: { type: "number" },
                     height: { type: "number" },
+                    stroke: { type: "string" },
+                    strokeWidth: { type: "number" },
+                    dashed: { type: "boolean" },
+                    curved: { type: "boolean" },
+                    bidirectional: { type: "boolean" },
+                    label: { type: "string" },
+                    style: { type: "string", enum: ["line", "arrow"] },
                   },
                   required: ["id"],
                 },
