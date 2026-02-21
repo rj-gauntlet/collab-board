@@ -1,6 +1,8 @@
 /**
  * Executes board-agent tool invocations from the API against the canvas handle.
  * Called on the client when the assistant message contains tool calls.
+ * Command breadth: Create, Delete, Move, Update, Clear board, Arrange/Resize/Distribute, Connect, Templates (flowchart, journey map, SWOT).
+ * Tools with no parameters (e.g. clear_board) are included via parseArgs(inv.args) returning {} when args is missing.
  */
 import type { WhiteboardCanvasHandle } from "@/features/whiteboard";
 
@@ -261,9 +263,8 @@ export function getToolCallsFromMessage(message: {
   const out: ToolInvocationCall[] = [];
   const list = message.toolInvocations ?? [];
   for (const inv of list) {
-    const hasArgs = inv.args != null && (typeof inv.args === "object" || typeof inv.args === "string");
     const isExecutable = EXECUTABLE_STATES.includes(inv.state);
-    if (isExecutable && hasArgs && inv.toolCallId && inv.toolName) {
+    if (isExecutable && inv.toolCallId && inv.toolName) {
       out.push({
         toolCallId: inv.toolCallId,
         toolName: inv.toolName,
@@ -276,9 +277,8 @@ export function getToolCallsFromMessage(message: {
   for (const part of parts) {
     if (part.type === "tool-invocation" && part.toolInvocation) {
       const inv = part.toolInvocation;
-      const hasArgs = inv.args != null && (typeof inv.args === "object" || typeof inv.args === "string");
       const isExecutable = EXECUTABLE_STATES.includes(inv.state);
-      if (isExecutable && hasArgs && inv.toolCallId && inv.toolName) {
+      if (isExecutable && inv.toolCallId && inv.toolName) {
         out.push({
           toolCallId: inv.toolCallId,
           toolName: inv.toolName,

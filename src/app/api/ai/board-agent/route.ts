@@ -5,51 +5,35 @@ import type { BoardStateSummary } from "@/features/ai-agent/board-agent-types";
 
 const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const BOARD_STATE_CONTEXT = `
-You are an AI assistant that helps users modify a real-time collaborative whiteboard.
-You receive a JSON snapshot of the current board state (elements with id, type, text/title, position, size, color).
-All coordinates and sizes are in board space (not screen pixels). Use sensible values: e.g. x,y starting around 100-200, spacing 20-40px.
-Default sticky note size: 160x120. Default frame: 320x200. Default shape: 120x80.
-When creating multiple items (e.g. grid, template), place them so they don't overlap and use consistent spacing (e.g. 24-40px gaps).
-Grid of sticky notes: When the user asks for an NxM grid of sticky notes (e.g. 6x6, 4x4, 2x3 pros and cons), use create_sticky_notes_grid with rows and columns. To add task-appropriate text (e.g. pros and cons, or row/column labels), pass labels: an array of strings in row-major order—e.g. 3 rows × 2 columns for pros and cons: labels ['Pro 1','Con 1','Pro 2','Con 2','Pro 3','Con 3']. This gives correct layout and content in one call. Do not use create_sticky_note with many items for grids.
+const MAX_BOARD_STATE_ELEMENTS = 80;
 
-Frames (containers):
-- A frame is a labeled container: it has id, type "frame", title, x, y, width, height. The top 28px is the title bar; the content area is the rectangle from (x, y+28) to (x+width, y+height). Nothing should be placed in the title bar strip.
-- Elements inside a frame have "parentFrameId" set to that frame's id. Use this to know which sticky notes/shapes belong to which frame (e.g. "add a note to the Strengths frame" = find the frame with title "Strengths", then create a note with x,y inside that frame's content area).
-- To add content inside a frame: use the frame's id from board state and place items with x between frame.x and frame.x+width minus item width, and y at least frame.y+28 (e.g. frame.y+36 for padding). Example: frame at 100,100 320x200 → content area x 100–320, y from 128; first note at (116, 144).
-- Single frame: use create_frame. Two or more frames: use create_frames with items array, different x so they sit side by side (e.g. x: 100, 420, 740 for three).
-- SWOT analysis: When the user asks for a "SWOT analysis", "SWOT", or "SWOT template" use the create_swot_analysis tool. It creates 4 quadrants (Strengths, Weaknesses, Opportunities, Threats) in 2x2 with placeholder notes in each. Pass notesPerQuadrant (1–5, default 3) to set how many empty notes per quadrant. Do not use create_frames + create_sticky_note for SWOT—use create_swot_analysis so quadrants and notes are created together.
-- "Retrospective" = create_frames with 3 items: "What Went Well", "What Didn't Go Well", "Action Items", x: 100, 420, 740.
-- User journey map: When the user asks for a "user journey map", "journey map", or "customer journey" use the create_user_journey_map tool. It creates stage frames in a row, standard lanes (Actions, Touchpoints, Thoughts, Pain points, Opportunities) as rows inside each stage, and arrows between stages. Pass stages: array of stage names in order (e.g. ["Awareness", "Consideration", "Decision", "Purchase", "Loyalty"]); omit for default. Pass lanes: array of row names (e.g. ["Actions", "Touchpoints", "Thoughts", "Pain points", "Opportunities"]); omit for default. Use the exact stage/lane names the user gives when they specify them.
-- resize_frame_to_fit: use when the user asks to resize a frame to fit its contents. Elements with that frame's id as parentFrameId are considered inside it.
+const BOARD_STATE_CONTEXT = `You modify a collaborative whiteboard. Board state is JSON (id, type, text/title, x, y, width, height, color). Coords in board space; use x,y 100-200, spacing 24-40. Defaults: note 160x120, frame 320x200, shape 120x80.
 
-Referring to elements:
-- When the user says "these", "selected", "the pink note", "the frame called X", match from the board state by description (text/title/color/type) and use the element id. If multiple match (e.g. "pink notes"), use all their ids.
-- If no IDs are clear, prefer the most recently created or mentioned elements, or ask once for clarification.
+You MUST call a tool to change the board. Do not only describe—invoke the tool so the board updates. Then reply in one sentence.
 
-Colors: Use hex (e.g. #fef08a) or names (yellow, blue, pink, green, orange, purple).
+Command types:
+1) Create: create_sticky_note, create_sticky_notes_grid, create_shape/create_shapes, create_frame/create_frames, create_connector.
+2) Templates—call these when the user asks:
+- Flowchart: When the user says "flowchart" or "flow chart", call create_flowchart. Pass labels array for custom node names (e.g. ["Start","Consideration","Validation","Decision","Success"]); omit for default (Start, Step 1, Step 2, End).
+- User journey map: When the user says "user journey", "journey map", or "customer journey", call create_user_journey_map. Optionally pass stages and/or lanes arrays; omit for defaults.
+- SWOT: When the user says "SWOT" or "SWOT analysis", call create_swot_analysis. Optionally pass notesPerQuadrant (1-5); omit for 3.
+3) Delete: delete_elements(ids) for specific items; clear_board (no params) for "delete all"/"clear board"/"remove everything".
+4) Move: move_elements(ids, dx, dy).
+5) Update: update_elements(updates).
+6) Arrange: arrange_grid(ids, columns?, spacing?); distribute_elements(ids, direction, spacing?); resize_frame_to_fit(frameId).
 
-IMPORTANT: You MUST use the provided tools to make changes. Do not only describe—call the tool(s) so the board updates. After calling tools, briefly confirm in one sentence.
-- resize_frame_to_fit: when the user asks to resize a frame to fit its contents.
-- distribute_elements: when they ask to space elements evenly, in a row/column, or with equal gaps (direction "horizontal" or "vertical").
-- For "arrange in a grid" use arrange_grid with the element ids and optional columns/spacing.
-- For "NxM grid of sticky notes" use create_sticky_notes_grid with rows and columns. When the grid has a purpose (e.g. pros and cons, voting options, categories), pass labels with the text for each cell in row-major order so notes have the right content.
-- For "delete all", "clear the board", "remove everything", or "clear all elements" use clear_board (no parameters). Do not use delete_elements with a list of IDs for clearing the whole board—clear_board removes everything reliably.
-- For multiple shapes at once (e.g. "4 circles", "2x2 grid of rectangles") use create_shapes with an items array.
-- To connect two elements: use create_connector with fromId and toId. You can set connector appearance: stroke (color, e.g. #3b82f6 or red), strokeWidth (thickness), dashed, curved, bidirectional, label, style (line or arrow). To change an existing connector's color, thickness, or style use update_elements with the connector's id and stroke, strokeWidth, dashed, curved, bidirectional, label, or style.
-
-Flowchart: When the user asks for a flowchart, use create_flowchart.
-User journey map: When the user asks for a user journey map, customer journey, or journey map, use create_user_journey_map so they get stages, lanes, and connectors in one step.
-SWOT: When the user asks for a SWOT analysis, SWOT, or SWOT template, use create_swot_analysis so they get all 4 quadrants with placeholder notes in one step. Optionally pass notesPerQuadrant (e.g. 3 or 4) to control how many notes per quadrant. If they specify stage names (e.g. "Discovery, Sign-up, Onboarding, Usage, Support") pass those as stages. If they specify lane/row names pass those as lanes. Otherwise omit parameters for the default robust template. If they specify node names (e.g. "Start, Consideration, Validation, Decision and Success"), pass those exact names in order as the labels array: create_flowchart({ labels: ["Start", "Consideration", "Validation", "Decision", "Success"] }). Use the order the user gives. If they do not specify node names, omit the labels parameter to get the default (Start, Step 1, Step 2, End). Always use create_flowchart so the frame and arrows are included; do not use create_sticky_note alone for flowcharts.`;
+Rules: Match "the pink note"/"frame X" to board state; use element id. Frames: content area y >= frame.y+28. Grids: create_sticky_notes_grid with labels in row-major order. Colors: hex or name. For complex requests, call multiple tools in sequence.`;
 
 function buildSystemPrompt(boardState: BoardStateSummary[]): string {
+  const state =
+    boardState.length > MAX_BOARD_STATE_ELEMENTS
+      ? boardState.slice(-MAX_BOARD_STATE_ELEMENTS)
+      : boardState;
   const stateJson =
-    boardState.length > 0
-      ? JSON.stringify(boardState, null, 0)
-      : "[] (empty board)";
+    state.length > 0 ? JSON.stringify(state, null, 0) : "[] (empty board)";
   return `${BOARD_STATE_CONTEXT}
 
-Current board state (array of elements):
+Board state:
 ${stateJson}`;
 }
 
@@ -87,7 +71,9 @@ export async function POST(req: Request) {
         role: m.role as "user" | "assistant" | "system",
         content: normalizeContent(m.content),
       })),
-      maxSteps: 3,
+      maxSteps: 5,
+      maxTokens: 2048,
+      temperature: 0,
       tools: {
         create_sticky_note: tool({
           description:
