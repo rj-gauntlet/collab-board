@@ -2,6 +2,7 @@
 
 import {
   collection,
+  collectionGroup,
   doc,
   setDoc,
   updateDoc,
@@ -9,6 +10,7 @@ import {
   getDoc,
   getDocs,
   query,
+  where,
   orderBy,
   Timestamp,
 } from "firebase/firestore";
@@ -39,24 +41,25 @@ export async function addUserBoard(
 }
 
 /**
- * Sets the board's display name from the board page. Updates boards/{boardId}.
- * If the user has this board in their userBoards (they created it), also updates that to keep the list in sync.
+ * Sets the board's display name from the board page. Updates boards/{boardId}
+ * and every userBoards entry for this board so "Your boards" stays in sync for
+ * whoever created the board (even when a different user renames it).
  */
 export async function setBoardName(
   boardId: string,
   name: string,
-  userId?: string
+  _userId?: string
 ): Promise<void> {
   const trimmed = name.trim();
   const boardRef = doc(db, BOARDS_PATH, boardId);
   await setDoc(boardRef, { name: trimmed }, { merge: true });
-  if (userId) {
-    const userBoardRef = doc(db, USER_BOARDS_PATH, userId, "boards", boardId);
-    const snap = await getDoc(userBoardRef);
-    if (snap.exists()) {
-      await updateDoc(userBoardRef, { name: trimmed });
-    }
-  }
+
+  const boardsGroup = collectionGroup(db, "boards");
+  const q = query(boardsGroup, where("boardId", "==", boardId));
+  const snapshot = await getDocs(q);
+  await Promise.all(
+    snapshot.docs.map((d) => updateDoc(d.ref, { name: trimmed }))
+  );
 }
 
 /**
