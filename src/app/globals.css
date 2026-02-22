@@ -23,3 +23,32 @@ body {
   color: var(--amber-text);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
+
+/* Subtle hexagonal-line (honeycomb) texture: 3 directions at 0°, 60°, 120° */
+.canvas-texture {
+  --tex-color: rgba(93, 64, 55, 0.035);
+  --tex-step: 48px;
+  --tex-line: 47px;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent var(--tex-line),
+      var(--tex-color) var(--tex-line),
+      var(--tex-color) var(--tex-step)
+    ),
+    repeating-linear-gradient(
+      60deg,
+      transparent,
+      transparent var(--tex-line),
+      var(--tex-color) var(--tex-line),
+      var(--tex-color) var(--tex-step)
+    ),
+    repeating-linear-gradient(
+      120deg,
+      transparent,
+      transparent var(--tex-line),
+      var(--tex-color) var(--tex-line),
+      var(--tex-color) var(--tex-step)
+    );
+}

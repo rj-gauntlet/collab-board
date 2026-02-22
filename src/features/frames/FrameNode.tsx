@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useCallback } from "react";
+import React, { useRef, useEffect, useCallback, useState } from "react";
 import { Group, Rect, Text, Line, Transformer } from "react-konva";
 import Konva from "konva";
 import type { FrameElement } from "./types";
@@ -40,6 +40,7 @@ export function FrameNode({
 }: FrameNodeProps) {
   const groupRef = useRef<Konva.Group>(null);
   const trRef = useRef<Konva.Transformer>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     if (isSelected && !isMultiSelectMode && trRef.current && groupRef.current) {
@@ -119,23 +120,25 @@ export function FrameNode({
         onDragStart={onDragStart}
         onDragEnd={handleDragEnd}
         onTransformEnd={handleTransformEnd}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         dragBoundFunc={(pos) => ({
           x: Math.max(0, pos.x),
           y: Math.max(0, pos.y),
         })}
       >
-        {/* Frame body — shadow and stroke for visual hierarchy */}
+        {/* Frame body — stronger shadow so frames read as containers; hover = subtle lift; selected = elevation */}
         <Rect
           width={frame.width}
           height={frame.height}
           fill={frame.fill}
-          stroke={isSelected ? "#ff8f00" : frame.stroke}
-          strokeWidth={isSelected ? 2 : Math.max(1, frame.strokeWidth)}
-          cornerRadius={4}
-          shadowColor="rgba(62, 39, 35, 0.12)"
-          shadowBlur={8}
+          stroke={isSelected ? "#ff8f00" : isHovered ? "rgba(93, 64, 55, 0.28)" : frame.stroke}
+          strokeWidth={isSelected ? 2 : isHovered ? 2 : Math.max(1, frame.strokeWidth)}
+          cornerRadius={8}
+          shadowColor="rgba(62, 39, 35, 0.2)"
+          shadowBlur={isSelected ? 16 : isHovered ? 18 : 12}
           shadowOffsetX={0}
-          shadowOffsetY={2}
+          shadowOffsetY={isSelected ? 5 : isHovered ? 4 : 3}
         />
         {/* Title bar background */}
         <Rect
@@ -144,7 +147,7 @@ export function FrameNode({
           width={frame.width}
           height={FRAME_TITLE_BAR_HEIGHT}
           fill="rgba(93, 64, 55, 0.07)"
-          cornerRadius={[4, 4, 0, 0]}
+          cornerRadius={[8, 8, 0, 0]}
           listening={false}
         />
         {/* Title / body separator */}

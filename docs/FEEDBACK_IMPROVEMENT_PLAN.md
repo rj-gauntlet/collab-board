@@ -38,6 +38,27 @@
 
 **Rough time:** 30–45 min.
 
+**Additional suggestions (industry practices):**
+
+- **Elevation / z-depth**
+  - Use a simple elevation scale so “containers” sit above “surface” and “content” above containers (e.g. canvas base → frames → stickies/shapes). Frames already use a bit of shadow; ensure stickies inside frames use a slightly smaller shadow so the frame still reads as the primary container (Miro/Figma-style).
+- **Corner radius system**
+  - Keep radii consistent by layer: e.g. frames 6–8px, stickies 4px (or vice versa). Many tools use slightly larger radius on frames so they read as cards/containers.
+- **Hover feedback**
+  - On hover, give frames and stickies a subtle “lift”: slightly stronger shadow or a light border so it’s clear they’re interactive (Figma/Mural).
+- **Selection elevation**
+  - When selected, increase shadow (e.g. `shadowBlur` +2–4px, small `shadowOffsetY`) so the selected element reads as “on top” and in focus.
+- **Persistent canvas texture**
+  - A very subtle dot grid or line grid (even when the main grid is off) gives the canvas a “surface” and reduces flatness (Miro/Notion boards). Can be a light CSS overlay or a Konva layer with low opacity.
+- **Frame title bar hierarchy**
+  - Stronger typography: title bar font weight 600, optional slightly darker or bordered separator under the title so the “header” of the frame is clearly distinct from the body.
+- **Stickies inside frames**
+  - Ensure sticky fill contrasts with frame fill (e.g. frame slightly muted, stickies more saturated) so content pops inside the container; keep sticky shadow smaller than frame shadow.
+- **Canvas edge / boundary**
+  - Optional: very subtle inner border or gradient along the canvas edge so the board reads as a bounded “board” rather than infinite space (common in physical-whiteboard metaphors).
+- **Connectors and lines**
+  - Ensure connectors have a clear stroke (contrast with background) and render above the canvas/frame fill but below or consistent with stickies so they don’t get lost in the hierarchy.
+
 ---
 
 ## 2. CollabBot panel — more guided, less “developer console”

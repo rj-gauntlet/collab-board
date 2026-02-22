@@ -2191,7 +2191,7 @@ export const WhiteboardCanvas = forwardRef<
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-[#fef3e0]"
+      className="relative h-full w-full overflow-hidden bg-[#fef3e0] canvas-texture"
       tabIndex={0}
       role="application"
       aria-label="Whiteboard canvas"

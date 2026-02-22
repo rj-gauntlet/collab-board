@@ -48,6 +48,7 @@ export function StickyNote({
   const textRef = useRef<Konva.Text>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const [editValue, setEditValue] = useState(note.text);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     if (isSelected && !isMultiSelectMode && trRef.current && groupRef.current) {
@@ -130,6 +131,8 @@ export function StickyNote({
         onDragEnd={handleDragEnd}
         onDblClick={handleDblClick}
         onContextMenu={handleContextMenu}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         dragBoundFunc={(pos) => ({
           x: Math.max(0, pos.x),
           y: Math.max(0, pos.y),
@@ -139,12 +142,12 @@ export function StickyNote({
           width={note.width}
           height={note.height}
           fill={note.color}
-          stroke={isConnectorFrom ? "#ff8f00" : isSelected ? "#ff8f00" : "#d4d4d8"}
-          strokeWidth={isConnectorFrom ? 3 : isSelected ? 2 : 1}
+          stroke={isConnectorFrom ? "#ff8f00" : isSelected ? "#ff8f00" : isHovered ? "#a8a29e" : "#d4d4d8"}
+          strokeWidth={isConnectorFrom ? 3 : isSelected ? 2 : isHovered ? 2 : 1}
           dash={isConnectorFrom ? [6, 4] : undefined}
-          shadowColor="rgba(0,0,0,0.2)"
-          shadowBlur={4}
-          shadowOffsetY={2}
+          shadowColor="rgba(62, 39, 35, 0.12)"
+          shadowBlur={isSelected ? 7 : isHovered ? 6 : 3}
+          shadowOffsetY={isSelected ? 3 : isHovered ? 2 : 1}
           cornerRadius={4}
         />
         <Text

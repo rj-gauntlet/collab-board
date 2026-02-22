@@ -22,7 +22,12 @@ Command types:
 5) Update: update_elements(updates).
 6) Arrange: arrange_grid(ids, columns?, spacing?); distribute_elements(ids, direction, spacing?); resize_frame_to_fit(frameId).
 
-Rules: Match "the pink note"/"frame X" to board state; use element id. Frames: content area y >= frame.y+28. Grids: create_sticky_notes_grid with labels in row-major order. Colors: hex or name. For complex requests, call multiple tools in sequence.`;
+Rules: Match "the pink note"/"frame X" to board state; use element id. Frames: content area y >= frame.y+28. Grids: create_sticky_notes_grid with labels in row-major order. Colors: hex or name. For complex requests, call multiple tools in sequence.
+
+Sticky notes in frames: When creating N sticky notes inside a frame you MUST size the frame so every note is fully inside (with 20px padding). Sticky size 160x120, spacing 24, title bar 28, padding 20. (1) Choose grid: e.g. 5 notes = 2x3, 8 notes = 4x2. (2) Frame dimensions (use these formulas exactly): frame_width = 40 + cols*160 + (cols-1)*24. frame_height = 28 + 40 + rows*120 + (rows-1)*24. (3) First note position: startX = frame.x+20, startY = frame.y+28+20 (content is below the 28px title bar). Step: stepX = 184, stepY = 144. Note at (col,row) = (startX + col*184, startY + row*144). (4) Create the frame with that exact width and height, then create_sticky_note with those positions. Check: rightmost note right edge = startX + (cols-1)*184 + 160 must be <= frame.x+frame_width-20; bottom note bottom = startY + (rows-1)*144 + 120 must be <= frame.y+frame_height-20.
+
+Example 5 inside + 3 outside: create_frame x 100 y 100 width 384 height 476. create_sticky_note 8 items: inside (120,148),(304,148),(120,292),(304,292),(120,436); outside (524,100),(524,244),(524,388).
+Example 8 notes in frame only: 4 cols x 2 rows. create_frame x 100 y 100 width 752 height 332. create_sticky_note 8 items at (120,148),(304,148),(488,148),(672,148),(120,292),(304,292),(488,292),(672,292).`;
 
 function buildSystemPrompt(boardState: BoardStateSummary[]): string {
   const state =
@@ -77,7 +82,7 @@ export async function POST(req: Request) {
       tools: {
         create_sticky_note: tool({
           description:
-            "Create one or more sticky notes with custom text/position. Pass items: array of { text, color?, x?, y?, width?, height? }. For an NxM grid of sticky notes (e.g. 6x6, 4x4) use create_sticky_notes_grid instead. To add a note inside a frame: use x,y within that frame's content area (y at least frame.y+28).",
+            "Create one or more sticky notes. Pass items: array of { text, color?, x?, y?, width?, height? }. Each element of items becomes exactly one sticky note on the board. Use one item per note with a single text string (e.g. 'Note 1'); do not put multiple note labels or newlines in one item's text. For an NxM grid use create_sticky_notes_grid instead. To add notes inside a frame use x,y within the frame content area (y >= frame.y+28).",
           parameters: jsonSchema<{
             items: Array<{
               text: string;
@@ -199,7 +204,7 @@ export async function POST(req: Request) {
         }),
         create_frame: tool({
           description:
-            "Create a single frame (labeled container with 28px title bar; content area is below y+28). Use for one frame only. For multiple frames or columns use create_frames instead.",
+            "Create a single frame (labeled container with 28px title bar; content area is below y+28). Use for one frame only. When the frame will contain sticky notes, set width and height so notes fit in a grid with 20px padding inside the frame; each note is 160x120, use 24px spacing between notes.",
           parameters: jsonSchema<{
             title: string;
             x?: number;

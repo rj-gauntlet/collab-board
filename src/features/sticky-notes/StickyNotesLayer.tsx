@@ -189,9 +189,9 @@ export function StickyNotesLayer({
                 fill={note.color}
                 stroke="#d4d4d8"
                 strokeWidth={1}
-                shadowColor="rgba(0,0,0,0.2)"
-                shadowBlur={4}
-                shadowOffsetY={2}
+                shadowColor="rgba(62, 39, 35, 0.12)"
+                shadowBlur={3}
+                shadowOffsetY={1}
                 cornerRadius={4}
                 listening={false}
               />
