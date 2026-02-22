@@ -159,7 +159,7 @@ export default function BoardPage() {
     return (
       <main className="font-sans flex h-screen flex-col items-center justify-center gap-6 bg-[#fffbf0]">
         <h1 className="font-sans text-2xl font-extrabold tracking-tight text-[#3e2723]">
-          CollabBoard <span className="text-[#ff8f00]">MVP</span>
+          CollabBoard
         </h1>
         <p className="font-sans text-[#5d4037]">
           Sign in with Google to collaborate on the whiteboard
@@ -237,7 +237,7 @@ export default function BoardPage() {
               href="/"
               className="font-sans text-xl font-extrabold tracking-tight text-white sm:text-2xl hover:text-[#fff8e1] transition"
             >
-              CollabBoard <span className="font-medium text-[#fff8e1]">MVP</span>
+              CollabBoard
             </a>
             <div className="flex items-center gap-1">
               {nameEditing ? (

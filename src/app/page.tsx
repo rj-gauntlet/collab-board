@@ -41,7 +41,7 @@ export default function Home() {
     return (
       <main className="font-sans flex h-screen flex-col items-center justify-center gap-6 bg-[#fffbf0] px-4">
         <h1 className="font-sans text-2xl font-extrabold tracking-tight text-[#3e2723]">
-          CollabBoard <span className="text-[#ff8f00]">MVP</span>
+          CollabBoard
         </h1>
         <p className="font-sans text-[#5d4037]">
           Sign in with Google to collaborate on the whiteboard
@@ -95,7 +95,7 @@ export default function Home() {
       <header className="shrink-0 border-b border-[#ffe0b2] bg-[#ff8f00] px-4 py-3 shadow-sm">
         <div className="flex items-center justify-between">
           <h1 className="font-sans text-xl font-extrabold tracking-tight text-white sm:text-2xl">
-            CollabBoard <span className="font-medium text-[#fff8e1]">MVP</span>
+            CollabBoard
           </h1>
           <div className="flex items-center gap-2">
             <span className="font-sans text-sm text-white/90">{displayName}</span>
