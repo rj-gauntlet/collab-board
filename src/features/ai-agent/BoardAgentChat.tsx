@@ -223,8 +223,9 @@ export function BoardAgentChat({
           const createdAt = (m as StoredMessage).createdAt ?? createdAtByIdRef.current.get(m.id);
           const timeLabel = createdAt ? formatMessageTime(createdAt) : "Just now";
           const isUser = m.role === "user";
-          const toolParts = m.parts?.filter((p): p is { type: "tool-invocation"; toolInvocation: { toolName: string } } => p.type === "tool-invocation" && "toolInvocation" in p) ?? [];
-          const textParts = m.parts?.filter((p): p is { type: "text"; text: string } => p.type === "text" && "text" in p) ?? [];
+          const toolParts =
+            m.parts?.filter((p) => p.type === "tool-invocation" && "toolInvocation" in p).map((p) => (p as { toolInvocation: { toolName?: string } }).toolInvocation) ?? [];
+          const textParts = m.parts?.filter((p) => p.type === "text" && "text" in p).map((p) => (p as { text: string }).text) ?? [];
           const fallbackContent = !m.parts?.length && m.content ? m.content : null;
           return (
             <div
@@ -248,19 +249,19 @@ export function BoardAgentChat({
                 </div>
                 <div className="mt-1.5">
                   {isUser ? (
-                    <span>{m.parts?.find((p): p is { type: "text"; text: string } => p.type === "text" && "text" in p)?.text ?? m.content ?? ""}</span>
+                    <span>{(m.parts?.find((p) => p.type === "text" && "text" in p) as { text: string } | undefined)?.text ?? m.content ?? ""}</span>
                   ) : (
                     <>
                       {toolParts.length > 0 && (
                         <div className="text-xs text-[#5d4037]/70 mb-1.5 space-y-0.5">
-                          {toolParts.map((part, i) => (
-                            <div key={i}>Tool: {part.toolInvocation.toolName}</div>
+                          {toolParts.map((inv, i) => (
+                            <div key={i}>Tool: {inv.toolName ?? "tool"}</div>
                           ))}
                         </div>
                       )}
                       {(textParts.length > 0 || fallbackContent) && (
                         <div>
-                          {textParts.length > 0 ? textParts.map((p, i) => <span key={i}>{p.text}</span>) : <span>{fallbackContent}</span>}
+                          {textParts.length > 0 ? textParts.map((t, i) => <span key={i}>{t}</span>) : <span>{fallbackContent}</span>}
                         </div>
                       )}
                     </>
