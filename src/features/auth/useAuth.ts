@@ -11,30 +11,15 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
+const TEST_DISPLAY_NAME_KEY = "collab-board-test-display-name";
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      if (!u && typeof window !== "undefined") {
-        const isLocalhost =
-          window.location.hostname === "localhost" &&
-          window.location.port === "3000";
-        if (isLocalhost) {
-          try {
-            const { user: anon } = await signInAnonymously(auth);
-            setUser(anon);
-          } catch (err) {
-            console.error("Anonymous sign-in error:", err);
-            setUser(null);
-          }
-        } else {
-          setUser(null);
-        }
-      } else {
-        setUser(u);
-      }
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -45,6 +30,9 @@ export function useAuth() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(TEST_DISPLAY_NAME_KEY);
+      }
     } catch (err) {
       console.error("Google sign-in error:", err);
     } finally {
@@ -52,9 +40,35 @@ export function useAuth() {
     }
   }, []);
 
+  /** Sign in anonymously and use the given name for cursors/header (multiplayer testing). */
+  const signInAsTestUser = useCallback(async (displayName: string) => {
+    setLoading(true);
+    try {
+      await signInAnonymously(auth);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TEST_DISPLAY_NAME_KEY, displayName);
+      }
+    } catch (err) {
+      console.error("Test user sign-in error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(TEST_DISPLAY_NAME_KEY);
+    }
     await firebaseSignOut(auth);
   }, []);
 
-  return { user, loading, signInWithGoogle, signOut };
+  const displayName =
+    user &&
+    typeof window !== "undefined" &&
+    user.isAnonymous &&
+    window.localStorage.getItem(TEST_DISPLAY_NAME_KEY)
+      ? window.localStorage.getItem(TEST_DISPLAY_NAME_KEY)!
+      : user?.displayName ?? user?.email ?? "Anonymous";
+
+  return { user, loading, displayName, signInWithGoogle, signInAsTestUser, signOut };
 }

@@ -2,7 +2,6 @@
 
 import {
   collection,
-  collectionGroup,
   doc,
   setDoc,
   updateDoc,
@@ -10,7 +9,6 @@ import {
   getDoc,
   getDocs,
   query,
-  where,
   orderBy,
   Timestamp,
 } from "firebase/firestore";
@@ -36,30 +34,49 @@ export async function addUserBoard(
       name: "",
       createdAt: Timestamp.now(),
     }),
-    setDoc(boardRef, { name: "", createdAt: Timestamp.now() }, { merge: true }),
+    setDoc(
+      boardRef,
+      { name: "", createdAt: Timestamp.now(), createdBy: userId },
+      { merge: true }
+    ),
   ]);
 }
 
 /**
  * Sets the board's display name from the board page. Updates boards/{boardId}
- * and every userBoards entry for this board so "Your boards" stays in sync for
- * whoever created the board (even when a different user renames it).
+ * and the current user's userBoards entry (so "Your boards" reflects the new name).
+ * Also updates the creator's entry if we have createdBy and it's different.
  */
 export async function setBoardName(
   boardId: string,
   name: string,
-  _userId?: string
+  userId?: string
 ): Promise<void> {
   const trimmed = name.trim();
   const boardRef = doc(db, BOARDS_PATH, boardId);
   await setDoc(boardRef, { name: trimmed }, { merge: true });
 
-  const boardsGroup = collectionGroup(db, "boards");
-  const q = query(boardsGroup, where("boardId", "==", boardId));
-  const snapshot = await getDocs(q);
-  await Promise.all(
-    snapshot.docs.map((d) => updateDoc(d.ref, { name: trimmed }))
-  );
+  const updates: Promise<void>[] = [];
+
+  if (userId) {
+    const currentUserBoardRef = doc(db, USER_BOARDS_PATH, userId, "boards", boardId);
+    const currentSnap = await getDoc(currentUserBoardRef);
+    if (currentSnap.exists()) {
+      updates.push(updateDoc(currentUserBoardRef, { name: trimmed }));
+    }
+  }
+
+  const boardSnap = await getDoc(boardRef);
+  const createdBy = boardSnap.exists() ? (boardSnap.data()?.createdBy as string | undefined) : undefined;
+  if (createdBy && createdBy !== userId) {
+    const creatorBoardRef = doc(db, USER_BOARDS_PATH, createdBy, "boards", boardId);
+    const creatorSnap = await getDoc(creatorBoardRef);
+    if (creatorSnap.exists()) {
+      updates.push(updateDoc(creatorBoardRef, { name: trimmed }));
+    }
+  }
+
+  await Promise.all(updates);
 }
 
 /**

@@ -9,7 +9,7 @@ import { addUserBoard, deleteUserBoard } from "@/features/boards/userBoardAction
 import { BoardListItem } from "@/features/boards/BoardListItem";
 
 export default function Home() {
-  const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const { user, loading, displayName, signInWithGoogle, signInAsTestUser, signOut } = useAuth();
   const { boards, loading: boardsLoading } = useUserBoards(user?.uid);
 
   useEffect(() => {
@@ -37,8 +37,9 @@ export default function Home() {
   }
 
   if (!user) {
+    const testUsers = ["Alex", "Jordan", "Sam", "Casey", "Riley"];
     return (
-      <main className="font-sans flex h-screen flex-col items-center justify-center gap-6 bg-[#fffbf0]">
+      <main className="font-sans flex h-screen flex-col items-center justify-center gap-6 bg-[#fffbf0] px-4">
         <h1 className="font-sans text-2xl font-extrabold tracking-tight text-[#3e2723]">
           CollabBoard <span className="text-[#ff8f00]">MVP</span>
         </h1>
@@ -70,11 +71,24 @@ export default function Home() {
           </svg>
           Sign in with Google
         </button>
+        <div className="font-sans mt-4 flex flex-col items-center gap-2">
+          <p className="text-xs text-[#5d4037]/80">Or sign in as a test user (for multiplayer evaluation):</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {testUsers.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => signInAsTestUser(name)}
+                className="rounded-lg border border-[#ffe0b2] bg-white px-3 py-2 text-sm font-medium text-[#5d4037] shadow-sm transition hover:bg-[#fff8e1] hover:border-[#ff8f00]"
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
       </main>
     );
   }
-
-  const displayName = user.displayName ?? user.email ?? "Anonymous";
 
   return (
     <main className="font-sans flex min-h-screen flex-col bg-[#fffbf0]">

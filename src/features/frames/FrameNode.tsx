@@ -124,14 +124,18 @@ export function FrameNode({
           y: Math.max(0, pos.y),
         })}
       >
-        {/* Frame body */}
+        {/* Frame body — shadow and stroke for visual hierarchy */}
         <Rect
           width={frame.width}
           height={frame.height}
           fill={frame.fill}
           stroke={isSelected ? "#ff8f00" : frame.stroke}
-          strokeWidth={isSelected ? 2 : frame.strokeWidth}
+          strokeWidth={isSelected ? 2 : Math.max(1, frame.strokeWidth)}
           cornerRadius={4}
+          shadowColor="rgba(62, 39, 35, 0.12)"
+          shadowBlur={8}
+          shadowOffsetX={0}
+          shadowOffsetY={2}
         />
         {/* Title bar background */}
         <Rect

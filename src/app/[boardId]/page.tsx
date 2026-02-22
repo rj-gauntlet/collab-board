@@ -25,7 +25,7 @@ export default function BoardPage() {
   const boardId = typeof params.boardId === "string" ? params.boardId : null;
   const isE2E = searchParams.get("e2e") === "1";
 
-  const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const { user, loading, displayName, signInWithGoogle, signOut } = useAuth();
   const [activeTool, setActiveTool] = useState<Tool>("hand");
   const [selectedCount, setSelectedCount] = useState(0);
   const [perfMonitorVisible, setPerfMonitorVisible] = useState(false);
@@ -104,8 +104,7 @@ export default function BoardPage() {
     };
   }, []);
 
-  const displayName =
-    user?.displayName ?? user?.email ?? (user ? "Anonymous" : null);
+  const resolvedDisplayName = displayName ?? (user ? "Anonymous" : null);
   const boardName = useBoardName(boardId ?? null);
   const { exists, loading: existsLoading } = useBoardExists(boardId ?? null, user?.uid);
 
@@ -373,11 +372,11 @@ export default function BoardPage() {
             <UsersList
               boardId={boardId}
               currentUserId={user.uid}
-              currentDisplayName={displayName}
+              currentDisplayName={resolvedDisplayName}
               currentEmail={user.email ?? null}
             />
             <span className="font-sans text-sm text-white/90">
-              {displayName}
+              {resolvedDisplayName}
             </span>
             <button
               type="button"
@@ -471,7 +470,7 @@ export default function BoardPage() {
               ref={canvasRef}
               boardId={boardId}
               userId={user.uid}
-              displayName={displayName}
+              displayName={resolvedDisplayName}
               width={canvasSize.width}
               height={canvasSize.height}
               pixelRatio={pixelRatio}
