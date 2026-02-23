@@ -40,23 +40,35 @@ export default function BoardPage() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const canvasRef = useRef<WhiteboardCanvasHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const remoteCursors = useRemoteCursors(boardId ?? "", user?.uid);
+  const { cursors: remoteCursors, viewportsByUserId } = useRemoteCursors(
+    boardId ?? "",
+    user?.uid
+  );
   const handleGoToUserView = useCallback(
     (userId: string) => {
-      const cursor = remoteCursors.find((c) => c.userId === userId);
+      const viewport =
+        viewportsByUserId.get(userId) ??
+        remoteCursors.find(
+          (c) =>
+            c.userId === userId &&
+            c.scale != null &&
+            c.centerBoardX != null &&
+            c.centerBoardY != null
+        );
       if (
-        cursor?.scale != null &&
-        cursor?.centerBoardX != null &&
-        cursor?.centerBoardY != null
+        viewport &&
+        typeof viewport.scale === "number" &&
+        typeof viewport.centerBoardX === "number" &&
+        typeof viewport.centerBoardY === "number"
       ) {
         canvasRef.current?.goToViewportByCenter(
-          cursor.centerBoardX,
-          cursor.centerBoardY,
-          cursor.scale
+          viewport.centerBoardX,
+          viewport.centerBoardY,
+          viewport.scale
         );
       }
     },
-    [remoteCursors]
+    [remoteCursors, viewportsByUserId]
   );
   const boardStateSnapshotRef = useRef<BoardStateSummary[]>([]);
   const onBoardStateSnapshot = useCallback((state: BoardStateSummary[]) => {
@@ -446,6 +458,7 @@ export default function BoardPage() {
               currentDisplayName={resolvedDisplayName}
               currentEmail={user.email ?? null}
               remoteCursors={remoteCursors}
+              viewportsByUserId={viewportsByUserId}
               onGoToUserView={handleGoToUserView}
             />
             <span className="font-sans text-sm text-white/90">

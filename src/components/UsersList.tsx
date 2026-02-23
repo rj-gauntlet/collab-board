@@ -13,6 +13,8 @@ interface UsersListProps {
   currentEmail?: string | null;
   /** Cursors from presence (used to show "Go to view" when they have viewport). */
   remoteCursors?: RemoteCursor[];
+  /** User IDs that have viewport data (so we show "Go to view" even when cursor is off-canvas). */
+  viewportsByUserId?: Map<string, unknown>;
   /** Called when user chooses "Go to [name]'s view". */
   onGoToUserView?: (userId: string) => void;
 }
@@ -23,6 +25,7 @@ export function UsersList({
   currentDisplayName,
   currentEmail,
   remoteCursors = [],
+  viewportsByUserId,
   onGoToUserView,
 }: UsersListProps) {
   const [open, setOpen] = useState(false);
@@ -99,7 +102,10 @@ export function UsersList({
                     c.centerBoardX != null &&
                     c.centerBoardY != null
                 );
-                const canGoToView = u.userId !== currentUserId && cursorWithView && onGoToUserView;
+                const hasViewport =
+                  cursorWithView || viewportsByUserId?.has(u.userId);
+                const canGoToView =
+                  u.userId !== currentUserId && hasViewport && onGoToUserView;
                 return (
                   <li
                     key={u.userId}

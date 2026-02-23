@@ -21,7 +21,7 @@ export function RemoteCursors({
   scaleX = 1,
   scaleY = 1,
 }: RemoteCursorsProps) {
-  const cursors = useRemoteCursors(boardId, excludeUserId);
+  const { cursors } = useRemoteCursors(boardId, excludeUserId);
 
   return (
     <Layer listening={false}>
