@@ -4,12 +4,17 @@ import { useState, useRef, useEffect } from "react";
 import { useBoardUsers } from "@/features/users";
 import { useRegisterBoardUser } from "@/features/users";
 import { userIdToColor } from "@/features/cursors";
+import type { RemoteCursor } from "@/features/cursors";
 
 interface UsersListProps {
   boardId: string;
   currentUserId: string;
   currentDisplayName?: string | null;
   currentEmail?: string | null;
+  /** Cursors from presence (used to show "Go to view" when they have viewport). */
+  remoteCursors?: RemoteCursor[];
+  /** Called when user chooses "Go to [name]'s view". */
+  onGoToUserView?: (userId: string) => void;
 }
 
 export function UsersList({
@@ -17,6 +22,8 @@ export function UsersList({
   currentUserId,
   currentDisplayName,
   currentEmail,
+  remoteCursors = [],
+  onGoToUserView,
 }: UsersListProps) {
   const [open, setOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -85,10 +92,18 @@ export function UsersList({
             <ul className="max-h-64 overflow-y-auto py-1">
               {users.map((u) => {
                 const color = userIdToColor(u.userId);
+                const cursorWithView = remoteCursors.find(
+                  (c) =>
+                    c.userId === u.userId &&
+                    c.scale != null &&
+                    c.centerBoardX != null &&
+                    c.centerBoardY != null
+                );
+                const canGoToView = u.userId !== currentUserId && cursorWithView && onGoToUserView;
                 return (
                   <li
                     key={u.userId}
-                    className="flex items-center gap-2 px-3 py-2 text-sm"
+                    className="flex items-center gap-2 border-b border-[#ffe0b2]/50 px-3 py-2 text-sm last:border-b-0"
                     role="menuitem"
                   >
                     <span
@@ -100,14 +115,37 @@ export function UsersList({
                       title={u.online ? "Online" : "Offline — same color as their cursor when present"}
                       aria-hidden
                     />
-                    <span className="truncate text-[#3e2723]">
+                    <span className="min-w-0 flex-1 truncate text-[#3e2723]">
                       {u.displayName}
                       {u.userId === currentUserId && (
-                        <span className="ml-1 text-[#5d4037]">
-                          (you)
-                        </span>
+                        <span className="ml-1 text-[#5d4037]">(you)</span>
                       )}
                     </span>
+                    {canGoToView && (
+                      <button
+                        type="button"
+                        onClick={() => onGoToUserView(u.userId)}
+                        title={`Go to ${u.displayName}'s view`}
+                        className="flex shrink-0 items-center justify-center rounded p-1 text-[#5d4037] transition hover:bg-[#ffe0b2]/50 hover:text-[#3e2723]"
+                        aria-label={`Go to ${u.displayName}'s view`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </button>
+                    )}
                   </li>
                 );
               })}
