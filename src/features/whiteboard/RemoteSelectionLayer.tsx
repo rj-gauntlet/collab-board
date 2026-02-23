@@ -85,7 +85,7 @@ export function RemoteSelectionLayer({
   }
 
   return (
-    <Layer x={x} y={y} scaleX={scaleX} scaleY={scaleY} listening={false}>
+    <Layer name="export-hide" x={x} y={y} scaleX={scaleX} scaleY={scaleY} listening={false}>
       {remoteSelections.map(({ userId, selectedIds }) => {
         const color = userIdToColor(userId);
         return selectedIds.map((id) => {

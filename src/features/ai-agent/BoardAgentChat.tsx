@@ -72,6 +72,9 @@ export function BoardAgentChat({
     const map = new Map<string, number>();
     loaded.forEach((m) => {
       if (m.createdAt != null) map.set(m.id, m.createdAt);
+      if (m.role === "assistant" && m.id && getToolCallsFromMessage(m as Parameters<typeof getToolCallsFromMessage>[0]).length > 0) {
+        executedMessageIdsRef.current.add(m.id);
+      }
     });
     createdAtByIdRef.current = map;
     return loaded;

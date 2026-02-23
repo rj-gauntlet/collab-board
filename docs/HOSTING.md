@@ -27,6 +27,11 @@ This app is set up to be publicly accessible using **Firebase Hosting** (front d
   ```bash
   firebase deploy --only firestore,database
   ```
+- [ ] **Storage rules** (for board background image import): deploy so upload/read of `boards/{boardId}/background` works:
+  ```bash
+  firebase deploy --only storage
+  ```
+  Rules are in `storage.rules`.
 
 ---
 
@@ -66,25 +71,67 @@ the identity that deploys to Cloud Run doesn’t have permission to set “Allow
 
 ### If Security tab keeps resetting to "Require authentication" on each push (App Hosting)
 
-When you push to GitHub, Firebase App Hosting deploys a new Cloud Run revision and the **Security** tab often resets to **Require authentication**. To fix this automatically:
+When you push to GitHub, Firebase App Hosting deploys a new Cloud Run revision and the **Security** tab often resets to **Require authentication**. To fix this automatically, use either **Workload Identity Federation** (when your org blocks key creation) or a **service account key**.
 
-1. **Add a GitHub Actions secret**
-   - Create a GCP service account (or use an existing one) with **Cloud Run Admin** (`roles/run.admin`) on the project.
-   - Create a JSON key for that account: [IAM → Service Accounts → Keys → Add key](https://console.cloud.google.com/iam-admin/serviceaccounts?project=collab-board-rj).
-   - In GitHub: **Settings → Secrets and variables → Actions** → **New repository secret**.
-   - Name: `GCP_SA_KEY`, Value: paste the entire JSON key file.
+1. **Authenticate the workflow** — choose one:
+
+   **Option A — When service account key creation is disabled (use Workload Identity Federation)**  
+   If you see "Service account key creation is disabled" (org policy `iam.disableServiceAccountKeyCreation`), you cannot create a JSON key. Use WIF instead (one-time setup below), then set two **repo Variables** in GitHub: `WIF_PROVIDER` and `WIF_SERVICE_ACCOUNT`. The workflow will then authenticate without any secret.
+
+   **Option B — Service account key (if your org allows keys)**  
+   Walkthrough:
+   - **GCP: Create a service account**  
+     [Google Cloud Console → IAM → Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts?project=collab-board-rj) → **Create service account**. Name it e.g. `github-actions-cloudrun`. You don’t need to set Permissions or Principals here; the role is added in the next step. Click **Create and continue**.
+   - **GCP: Grant Cloud Run Admin**  
+     Go to [IAM & Admin → IAM](https://console.cloud.google.com/iam-admin/iam?project=collab-board-rj) (project IAM, not Service accounts). Click **Grant access**. In **New principals** enter `github-actions-cloudrun@collab-board-rj.iam.gserviceaccount.com`, set role **Cloud Run Admin**, then **Save**. (Do not use “Manage access” on the Service account—that grants access *to* the SA; we need the SA to have a role *on the project*.)
+   - **GCP: Create a JSON key**  
+     Open the new service account → **Keys** tab → **Add key** → **Create new key** → **JSON** → **Create**. The key file downloads; keep it secure.
+   - **GitHub: Add the secret**  
+     Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Name: `GCP_SA_KEY`. Value: paste the **entire** contents of the JSON key file (one line or pretty-printed both work). **Add secret**.
+
+   **One-time Workload Identity Federation setup (Option A)**  
+   Run these in [Cloud Shell](https://shell.cloud.google.com/) or locally with `gcloud` (replace `YOUR_GITHUB_OWNER` and `YOUR_REPO` with your GitHub org/user and repo name, e.g. `rjxxl` and `collab-board`; use project `collab-board-rj` or your project ID):
+
+   ```bash
+   PROJECT_ID=collab-board-rj
+   POOL=github-pool
+   PROVIDER=github-provider
+   SA_EMAIL=github-actions-cloudrun@${PROJECT_ID}.iam.gserviceaccount.com
+   OWNER=YOUR_GITHUB_OWNER
+   REPO=YOUR_REPO
+
+   gcloud iam workload-identity-pools create "${POOL}" \
+     --location=global --display-name="GitHub Actions" --project="${PROJECT_ID}"
+
+   gcloud iam workload-identity-pools providers create-oidc "${PROVIDER}" \
+     --location=global --workload-identity-pool="${POOL}" \
+     --issuer-uri="https://token.actions.githubusercontent.com" \
+     --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" \
+     --attribute-condition="assertion.repository_owner == '${OWNER}' && assertion.repository == '${OWNER}/${REPO}'" \
+     --project="${PROJECT_ID}"
+
+   gcloud iam service-accounts add-iam-policy-binding "${SA_EMAIL}" \
+     --project="${PROJECT_ID}" \
+     --role="roles/iam.workloadIdentityUser" \
+     --member="principalSet://iam.googleapis.com/projects/${PROJECT_ID}/locations/global/workloadIdentityPools/${POOL}/attribute.repository/${OWNER}/${REPO}"
+   ```
+
+   Then in GitHub → **Settings** → **Secrets and variables** → **Actions** → **Variables** → **New repository variable**:
+
+   - Name: `WIF_PROVIDER`  
+     Value: `projects/collab-board-rj/locations/global/workloadIdentityPools/github-pool/providers/github-provider` (adjust project/pool/provider if you changed them).
+   - Name: `WIF_SERVICE_ACCOUNT`  
+     Value: `github-actions-cloudrun@collab-board-rj.iam.gserviceaccount.com` (same SA you gave Cloud Run Admin).
 
 2. **Use the workflow in this repo**
-   - The workflow `.github/workflows/cloudrun-allow-unauthenticated.yml` runs on every push to `main` (after a short wait for the deploy to finish) and runs:
-     ```bash
-     gcloud run services add-iam-policy-binding collab-board \
-       --region=us-east4 --member="allUsers" --role="roles/run.invoker"
-     ```
-   - So the Cloud Run service stays **Allow unauthenticated** after each deploy.
+   - The workflow `.github/workflows/cloudrun-allow-unauthenticated.yml` runs on every push to `main` (after an 8‑minute wait for App Hosting to finish deploying) and:
+     - Runs `gcloud run services update ... --no-invoker-iam-check` (recommended way to keep "Allow public access").
+     - Then adds the `allUsers` + `roles/run.invoker` IAM binding as a fallback.
+   - The Cloud Run service stays **Allow public access** after each deploy.
 
 3. **Optional:** If your App Hosting backend uses a different Cloud Run service name or region, set repository **Variables**: `GCP_PROJECT_ID`, `CLOUD_RUN_SERVICE`, `CLOUD_RUN_REGION`.
 
-You can also run the workflow manually: **Actions → Cloud Run allow unauthenticated → Run workflow**.
+You can also run the workflow manually: **Actions → Cloud Run allow unauthenticated → Run workflow**. If a rollout just finished and the Security tab reset, run it once and wait for it to complete.
 
 ---
 

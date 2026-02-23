@@ -71,7 +71,10 @@ import { TextFormatBar } from "@/components/TextFormatBar";
 import { ConnectorStyleBar, type ConnectorStyleBarHandle } from "@/components/ConnectorStyleBar";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { GridLayer } from "./GridLayer";
-import { exportBoardAsPng } from "./exportBoard";
+import { BackgroundImageLayer } from "./BackgroundImageLayer";
+import { useBoardBackgroundImage } from "@/features/boards/useBoardBackgroundImage";
+import { useBoardName } from "@/features/boards/useBoardName";
+import { exportBoardAsPng, sanitizeBoardFilename } from "./exportBoard";
 import { snapPos, GRID_SIZE } from "./snapGrid";
 import { useUndoRedo, type BoardSnapshot } from "./useUndoRedo";
 import type { StickyNoteElement } from "@/features/sticky-notes";
@@ -381,6 +384,8 @@ export const WhiteboardCanvas = forwardRef<
     [remoteDragging]
   );
 
+  const boardBackgroundImage = useBoardBackgroundImage(boardId);
+  const boardName = useBoardName(boardId);
   const persistedNotes = usePersistedNotes(boardId);
   const remoteNotes = useRemoteNotes(boardId);
 
@@ -1976,7 +1981,15 @@ export const WhiteboardCanvas = forwardRef<
       deleteSelection: handleDeleteSelection,
       exportImage: () => {
         const stage = stageRef.current;
-        if (stage) exportBoardAsPng(stage);
+        if (!stage) return;
+        const bbox = getContentBBox(
+          notesRef.current,
+          shapesRef.current,
+          textElementsRef.current,
+          framesRef.current
+        );
+        const filename = `${sanitizeBoardFilename(boardName)}.png`;
+        exportBoardAsPng(stage, { filename, contentBbox: bbox ?? undefined });
       },
       undo: () => undoAction(getCurrentSnapshot),
       redo: redoAction,
@@ -2015,6 +2028,7 @@ export const WhiteboardCanvas = forwardRef<
       getCurrentSnapshot,
       fitToContent,
       goToViewportByCenter,
+      boardName,
     ]
   );
 
@@ -2363,6 +2377,7 @@ export const WhiteboardCanvas = forwardRef<
         onTouchEnd={handlePinchEnd}
         style={{ cursor: cursorStyle }}
       >
+        <BackgroundImageLayer background={boardBackgroundImage} />
         {gridVisible && (
           <GridLayer
             width={width}
@@ -2625,7 +2640,7 @@ export const WhiteboardCanvas = forwardRef<
           scaleY={scale}
         />
         {selectionBox && (
-          <Layer x={stageX} y={stageY} scaleX={scale} scaleY={scale} listening={false}>
+          <Layer name="export-hide" x={stageX} y={stageY} scaleX={scale} scaleY={scale} listening={false}>
             <Rect
               x={Math.min(selectionBox.startX, selectionBox.endX)}
               y={Math.min(selectionBox.startY, selectionBox.endY)}

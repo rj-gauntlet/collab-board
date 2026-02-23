@@ -1,0 +1,10 @@
+rules_version = '2';
+
+// Firebase Storage rules. Allow read/write for board background images so import/export flow works.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /boards/{boardId}/background {
+      allow read, write: if true;
+    }
+  }
+}

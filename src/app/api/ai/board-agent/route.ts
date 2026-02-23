@@ -58,13 +58,6 @@ export async function POST(req: Request) {
       boardId?: string;
     };
 
-    if (process.env.NODE_ENV === "development") {
-      const types = Array.isArray(boardState)
-        ? boardState.map((e) => e.type).join(", ")
-        : "not an array";
-      console.log(`[board-agent] boardState length=${Array.isArray(boardState) ? boardState.length : 0} types=[${types}]`);
-    }
-
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(
         JSON.stringify({ error: "messages array required" }),
@@ -92,13 +85,6 @@ export async function POST(req: Request) {
             : stateArray
         )
       : undefined;
-
-    if (process.env.NODE_ENV === "development") {
-      console.log("[board-agent] lastUserContent:", JSON.stringify(lastUserContent.slice(0, 80)));
-      console.log("[board-agent] isAskingWhatIsOnBoard:", isAskingWhatIsOnBoard(lastUserContent));
-      console.log("[board-agent] stateArray.length:", stateArray.length);
-      console.log("[board-agent] forcedWhatOnBoardReply:", forcedWhatOnBoardReply == null ? "none" : forcedWhatOnBoardReply.slice(0, 120) + "...");
-    }
 
     // Bypass the model for "what's on the board" so we always return the full list (model often ignored prompt).
     if (forcedWhatOnBoardReply != null) {

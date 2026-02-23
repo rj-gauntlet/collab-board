@@ -44,14 +44,14 @@ describe("formatBoardStateList", () => {
     expect(reply).toContain("Sticky Note 2");
     expect(reply).toContain("yellow");
     expect(reply).toContain("Double-click to edit");
-    expect(reply).toMatch(/\(1\).*\(2\).*\(3\).*\(4\)/);
-    expect(reply).toContain("The board has:");
+    expect(reply).toContain("On the board:");
+    expect(reply).toMatch(/1\.[\s\S]*2\.[\s\S]*3\.[\s\S]*4\./);
   });
 
-  it("returns exactly one sentence per element (no truncation to only first item)", () => {
+  it("returns exactly one line per element (no truncation to only first item)", () => {
     const reply = formatBoardStateList(fourElements);
-    const count = (reply.match(/\(\d+\)/g) ?? []).length;
-    expect(count).toBe(4);
+    const numberedLines = reply.match(/^\d+\./gm) ?? [];
+    expect(numberedLines.length).toBe(4);
   });
 
   it("returns 'The board is empty.' when state is empty", () => {

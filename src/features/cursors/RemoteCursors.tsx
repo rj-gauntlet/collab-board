@@ -24,7 +24,7 @@ export function RemoteCursors({
   const { cursors } = useRemoteCursors(boardId, excludeUserId);
 
   return (
-    <Layer listening={false}>
+    <Layer name="export-hide" listening={false}>
       {cursors.map((cursor) => {
         const screenX = x + cursor.x * scaleX;
         const screenY = y + cursor.y * scaleY;

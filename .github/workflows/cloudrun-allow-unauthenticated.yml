@@ -1,11 +1,12 @@
 # After Firebase App Hosting deploys to Cloud Run on push, the service often
-# ends up with "Require authentication". This workflow re-applies the IAM
-# binding so the service allows unauthenticated (public) invocations.
+# ends up with "Require authentication". This workflow re-applies public
+# access using both recommended methods so the Security tab stays "Allow public access".
 #
-# Required secret: GCP_SA_KEY = JSON key for a service account that has
-#   roles/run.admin (or at least run.services.setIamPolicy) on the project.
-# Optional: set GCP_PROJECT_ID, CLOUD_RUN_SERVICE, CLOUD_RUN_REGION in
-#   repo Variables if your service name/region differ.
+# Authentication (use one):
+#   A) Workload Identity Federation (recommended when org policy blocks keys):
+#      Set repo Variables: WIF_PROVIDER, WIF_SERVICE_ACCOUNT. See HOSTING.md "When key creation is disabled".
+#   B) Service account key: Set repo Secret GCP_SA_KEY = JSON key for a SA with roles/run.admin.
+# Optional: GCP_PROJECT_ID, CLOUD_RUN_SERVICE, CLOUD_RUN_REGION.
 
 name: Cloud Run allow unauthenticated
 
@@ -15,16 +16,40 @@ on:
   workflow_dispatch:
 
 jobs:
-  set-invoker:
+  set-public-access:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # required for Workload Identity Federation
+      contents: read
     steps:
+      - name: Check for GCP credentials
+        run: |
+          if [ -n "${{ vars.WIF_PROVIDER }}" ] && [ -n "${{ vars.WIF_SERVICE_ACCOUNT }}" ]; then
+            echo "Using Workload Identity Federation."
+          elif [ -n "${{ secrets.GCP_SA_KEY }}" ]; then
+            echo "Using service account key (GCP_SA_KEY)."
+          else
+            echo "::error::No GCP credentials configured."
+            echo "Either set Variables WIF_PROVIDER and WIF_SERVICE_ACCOUNT (see HOSTING.md: When key creation is disabled), or set Secret GCP_SA_KEY."
+            exit 1
+          fi
+
       - name: Wait for App Hosting deploy (push only)
         if: github.event_name == 'push'
-        run: sleep 300
-        # App Hosting deploys to Cloud Run on push; wait so we set IAM on the new revision.
+        run: sleep 480
+        # App Hosting deploys to Cloud Run on push; wait 8 min so we run after the new revision is live.
 
       - id: auth
-        name: Authenticate to Google Cloud
+        name: Authenticate to Google Cloud (WIF)
+        if: vars.WIF_PROVIDER != '' && vars.WIF_SERVICE_ACCOUNT != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - id: auth
+        name: Authenticate to Google Cloud (key)
+        if: vars.WIF_PROVIDER == '' || vars.WIF_SERVICE_ACCOUNT == ''
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -34,15 +59,25 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID || 'collab-board-rj' }}
 
-      - name: Allow unauthenticated invocations on Cloud Run service
+      - name: Allow public access on Cloud Run service
         run: |
           SERVICE="${{ vars.CLOUD_RUN_SERVICE || 'collab-board' }}"
           REGION="${{ vars.CLOUD_RUN_REGION || 'us-east4' }}"
-          echo "Setting Cloud Run Invoker for allUsers on ${SERVICE} (${REGION})..."
+          echo "Enabling public access for ${SERVICE} (${REGION})..."
+
+          # 1. Disable invoker IAM check (recommended; keeps Security tab as "Allow public access" across deploys)
+          gcloud run services update "${SERVICE}" \
+            --region="${REGION}" \
+            --no-invoker-iam-check \
+            --quiet
+
+          # 2. Grant allUsers the invoker role (belt-and-suspenders for public access)
           gcloud run services add-iam-policy-binding "${SERVICE}" \
             --region="${REGION}" \
             --member="allUsers" \
             --role="roles/run.invoker" \
             --quiet
+
+          echo "Done. Security tab should show 'Allow public access'."
         env:
           CLOUDSDK_CORE_PROJECT: ${{ vars.GCP_PROJECT_ID || 'collab-board-rj' }}

@@ -103,10 +103,11 @@ export function FramesLayer({
     [remoteDraggingByElementId]
   );
 
-  // Keep previous remote in sync for next render (so we detect "just dropped").
-  previousRemoteRef.current = new Map(
-    Array.from(remoteDraggingByElementId.entries()).map(([id, d]) => [id, { x: d.x, y: d.y }])
-  );
+  // Keep last-known remote position per frame; never remove so we can linger after drag end
+  // until Firestore delivers the new position (avoids jump back to original on other clients).
+  for (const [id, d] of remoteDraggingByElementId) {
+    previousRemoteRef.current.set(id, { x: d.x, y: d.y });
+  }
 
   useEffect(() => {
     return () => {
