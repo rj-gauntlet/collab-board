@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { Group, Rect, Text, Transformer } from "react-konva";
+import { Group, Rect, Line, Text, Transformer } from "react-konva";
 import Konva from "konva";
 import type { StickyNoteElement } from "./types";
 
@@ -9,6 +9,18 @@ const PADDING = 8;
 const FONT_SIZE = 14;
 const MIN_WIDTH = 80;
 const MIN_HEIGHT = 60;
+const CORNER_RADIUS = 8;
+const FOLD_SIZE = 14;
+
+/** Darken a hex color by a factor (0–1). Supports #rgb and #rrggbb. */
+function darkenHex(hex: string, factor: number): string {
+  let n = hex.replace("#", "");
+  if (n.length === 3) n = n[0] + n[0] + n[1] + n[1] + n[2] + n[2];
+  const r = Math.max(0, parseInt(n.slice(0, 2), 16) * (1 - factor));
+  const g = Math.max(0, parseInt(n.slice(2, 4), 16) * (1 - factor));
+  const b = Math.max(0, parseInt(n.slice(4, 6), 16) * (1 - factor));
+  return `#${Math.round(r).toString(16).padStart(2, "0")}${Math.round(g).toString(16).padStart(2, "0")}${Math.round(b).toString(16).padStart(2, "0")}`;
+}
 
 interface StickyNoteProps {
   note: StickyNoteElement;
@@ -138,17 +150,42 @@ export function StickyNote({
           y: Math.max(0, pos.y),
         })}
       >
+        {/* Paper shadow (drawn first, behind the note) */}
+        <Rect
+          x={2}
+          y={4}
+          width={note.width}
+          height={note.height}
+          fill="rgba(0,0,0,0.06)"
+          cornerRadius={CORNER_RADIUS}
+          listening={false}
+        />
         <Rect
           width={note.width}
           height={note.height}
           fill={note.color}
-          stroke={isConnectorFrom ? "#ff8f00" : isSelected ? "#ff8f00" : isHovered ? "#a8a29e" : "#d4d4d8"}
+          stroke={isConnectorFrom ? "#ff8f00" : isSelected ? "#ff8f00" : isHovered ? darkenHex(note.color, 0.2) : darkenHex(note.color, 0.12)}
           strokeWidth={isConnectorFrom ? 3 : isSelected ? 2 : isHovered ? 2 : 1}
           dash={isConnectorFrom ? [6, 4] : undefined}
-          shadowColor="rgba(62, 39, 35, 0.12)"
-          shadowBlur={isSelected ? 7 : isHovered ? 6 : 3}
-          shadowOffsetY={isSelected ? 3 : isHovered ? 2 : 1}
-          cornerRadius={4}
+          shadowColor="rgba(62, 39, 35, 0.18)"
+          shadowBlur={isSelected ? 12 : isHovered ? 10 : 6}
+          shadowOffsetX={0}
+          shadowOffsetY={isSelected ? 4 : isHovered ? 3 : 2}
+          cornerRadius={CORNER_RADIUS}
+        />
+        {/* Folded corner (bottom-right) */}
+        <Line
+          points={[
+            note.width - FOLD_SIZE,
+            note.height,
+            note.width,
+            note.height,
+            note.width,
+            note.height - FOLD_SIZE,
+          ]}
+          closed
+          fill={darkenHex(note.color, 0.12)}
+          listening={false}
         />
         <Text
           ref={textRef}

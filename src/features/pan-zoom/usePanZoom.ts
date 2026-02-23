@@ -2,7 +2,7 @@
 
 import { useCallback, useState, useRef } from "react";
 
-const MIN_SCALE = 0.25;
+const MIN_SCALE = 0.05;
 const MAX_SCALE = 4;
 const ZOOM_SENSITIVITY = 0.002;
 const ZOOM_STEP = 1.2;
