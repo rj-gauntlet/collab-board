@@ -4,7 +4,6 @@ import React, { useCallback, useState, useRef, useEffect } from "react";
 import { Layer, Transformer, Rect, Text, Line, Group } from "react-konva";
 import Konva from "konva";
 import { FrameNode, type RequestEditTitleFn } from "./FrameNode";
-import { useRemoteDragging } from "@/features/sticky-notes/useRemoteDragging";
 import { persistFrame } from "./usePersistedFrames";
 import { snapPos } from "@/features/whiteboard/snapGrid";
 import type { FrameElement } from "./types";
@@ -14,6 +13,8 @@ interface FramesLayerProps {
   boardId: string;
   userId: string;
   frames: FrameElement[];
+  /** Resolved display position per frame (from canvas: includes remote drag + linger). */
+  frameDisplayPositions: Map<string, { x: number; y: number }>;
   selectedIds: Set<string>;
   onSelectFrame: (id: string, addToSelection: boolean) => void;
   onFrameUpdate: (frame: FrameElement) => void;
@@ -33,6 +34,7 @@ export function FramesLayer({
   boardId,
   userId,
   frames,
+  frameDisplayPositions,
   selectedIds,
   onSelectFrame,
   onFrameUpdate,
@@ -49,72 +51,6 @@ export function FramesLayer({
 }: FramesLayerProps) {
   const [selectedRefs, setSelectedRefs] = useState<Map<string, Konva.Node>>(new Map());
   const multiTrRef = useRef<Konva.Transformer>(null);
-  const remoteDragging = useRemoteDragging(boardId, userId);
-  const remoteDraggingByElementId = new Map(
-    remoteDragging.map((d) => [d.elementId, d])
-  );
-
-  // When remote drag ends (other user dropped), keep showing last position briefly so we don't flash
-  // back to stale persisted position before Firestore update arrives.
-  const LINGER_MS = 400;
-  const previousRemoteRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const lingeredRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const lingerTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const [, setLingerTick] = useState(0);
-
-  const getDisplayPosition = useCallback(
-    (frame: FrameElement): { x: number; y: number } => {
-      const id = frame.id;
-      const remote = remoteDraggingByElementId.get(id);
-      if (remote) return { x: remote.x, y: remote.y };
-
-      const lingered = lingeredRef.current.get(id);
-      if (lingered) {
-        const caughtUp =
-          Math.abs(frame.x - lingered.x) < 1 && Math.abs(frame.y - lingered.y) < 1;
-        if (caughtUp) {
-          lingeredRef.current.delete(id);
-          const t = lingerTimeoutsRef.current.get(id);
-          if (t) {
-            clearTimeout(t);
-            lingerTimeoutsRef.current.delete(id);
-          }
-          return { x: frame.x, y: frame.y };
-        }
-        return lingered;
-      }
-
-      const previous = previousRemoteRef.current.get(id);
-      if (previous) {
-        lingeredRef.current.set(id, previous);
-        if (!lingerTimeoutsRef.current.has(id)) {
-          const t = setTimeout(() => {
-            lingeredRef.current.delete(id);
-            lingerTimeoutsRef.current.delete(id);
-            setLingerTick((n) => n + 1);
-          }, LINGER_MS);
-          lingerTimeoutsRef.current.set(id, t);
-        }
-        return previous;
-      }
-
-      return { x: frame.x, y: frame.y };
-    },
-    [remoteDraggingByElementId]
-  );
-
-  // Keep last-known remote position per frame; never remove so we can linger after drag end
-  // until Firestore delivers the new position (avoids jump back to original on other clients).
-  for (const [id, d] of remoteDraggingByElementId) {
-    previousRemoteRef.current.set(id, { x: d.x, y: d.y });
-  }
-
-  useEffect(() => {
-    return () => {
-      lingerTimeoutsRef.current.forEach((t) => clearTimeout(t));
-      lingerTimeoutsRef.current.clear();
-    };
-  }, []);
 
   const onRegisterSelectRef = useCallback((id: string, node: Konva.Node | null) => {
     setSelectedRefs((prev) => {
@@ -185,9 +121,10 @@ export function FramesLayer({
   return (
     <Layer listening={true} x={x} y={y} scaleX={scaleX} scaleY={scaleY}>
       {frames.map((frame) => {
-        const { x: displayX, y: displayY } = getDisplayPosition(frame);
-        const isRemoteOrLingered =
-          remoteDraggingByElementId.has(frame.id) || lingeredRef.current.has(frame.id);
+        const pos = frameDisplayPositions.get(frame.id) ?? { x: frame.x, y: frame.y };
+        const displayX = pos.x;
+        const displayY = pos.y;
+        const isRemoteOrLingered = displayX !== frame.x || displayY !== frame.y;
 
         if (isRemoteOrLingered) {
           return (

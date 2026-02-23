@@ -384,6 +384,13 @@ export const WhiteboardCanvas = forwardRef<
     [remoteDragging]
   );
 
+  // Frame display positions: linger after remote drag end so frame and selection outline don't jump back
+  const FRAME_LINGER_MS = 400;
+  const framePreviousRemoteRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const frameLingeredRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const frameLingerTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [frameLingerTick, setFrameLingerTick] = useState(0);
+
   const boardBackgroundImage = useBoardBackgroundImage(boardId);
   const boardName = useBoardName(boardId);
   const persistedNotes = usePersistedNotes(boardId);
@@ -1729,6 +1736,62 @@ export const WhiteboardCanvas = forwardRef<
     framesRef.current = frames;
   }
 
+  // Compute frame display positions (linger after remote drag end so frame + selection outline don't jump)
+  const frameDisplayPositions = React.useMemo(() => {
+    const result = new Map<string, { x: number; y: number }>();
+    for (const [id, d] of remoteDragByElementId) {
+      framePreviousRemoteRef.current.set(id, { x: d.x, y: d.y });
+    }
+    for (const frame of frames) {
+      const id = frame.id;
+      const remote = remoteDragByElementId.get(id);
+      if (remote) {
+        result.set(id, remote);
+        continue;
+      }
+      const lingered = frameLingeredRef.current.get(id);
+      if (lingered) {
+        const caughtUp =
+          Math.abs(frame.x - lingered.x) < 1 && Math.abs(frame.y - lingered.y) < 1;
+        if (caughtUp) {
+          frameLingeredRef.current.delete(id);
+          const t = frameLingerTimeoutsRef.current.get(id);
+          if (t) {
+            clearTimeout(t);
+            frameLingerTimeoutsRef.current.delete(id);
+          }
+          result.set(id, { x: frame.x, y: frame.y });
+        } else {
+          result.set(id, lingered);
+        }
+        continue;
+      }
+      const previous = framePreviousRemoteRef.current.get(id);
+      if (previous) {
+        frameLingeredRef.current.set(id, previous);
+        if (!frameLingerTimeoutsRef.current.has(id)) {
+          const t = setTimeout(() => {
+            frameLingeredRef.current.delete(id);
+            frameLingerTimeoutsRef.current.delete(id);
+            setFrameLingerTick((n) => n + 1);
+          }, FRAME_LINGER_MS);
+          frameLingerTimeoutsRef.current.set(id, t);
+        }
+        result.set(id, previous);
+        continue;
+      }
+      result.set(id, { x: frame.x, y: frame.y });
+    }
+    return result;
+  }, [frames, remoteDragByElementId, frameLingerTick]);
+
+  useEffect(() => {
+    return () => {
+      frameLingerTimeoutsRef.current.forEach((t) => clearTimeout(t));
+      frameLingerTimeoutsRef.current.clear();
+    };
+  }, []);
+
   useEffect(() => {
     connectorsRef.current = connectors;
   }, [connectors]);
@@ -2391,6 +2454,7 @@ export const WhiteboardCanvas = forwardRef<
           boardId={boardId}
           userId={userId}
           frames={frames}
+          frameDisplayPositions={frameDisplayPositions}
           selectedIds={selectedIds}
           onSelectFrame={handleSelectFrame}
           onFrameUpdate={handleFrameUpdate}
@@ -2659,6 +2723,7 @@ export const WhiteboardCanvas = forwardRef<
           shapes={shapes}
           textElements={textElements}
           frames={frames}
+          frameDisplayPositions={frameDisplayPositions}
           liveDrag={
             draggingState.isDragging && draggingState.elementId
               ? { elementId: draggingState.elementId, x: draggingState.x, y: draggingState.y }

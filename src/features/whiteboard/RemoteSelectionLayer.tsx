@@ -21,6 +21,8 @@ interface RemoteSelectionLayerProps {
   shapes: BoundsLike[];
   textElements: TextBoundsLike[];
   frames: BoundsLike[];
+  /** Resolved frame positions (from canvas: includes remote drag + linger so outline doesn't jump). */
+  frameDisplayPositions?: Map<string, { x: number; y: number }>;
   /** Current user's drag: outline for this element uses (x,y) so it tracks. */
   liveDrag?: LiveDrag | null;
   /** Other users' drags: outline for these elements uses these positions (so outline tracks on viewer's client). */
@@ -42,6 +44,7 @@ export function RemoteSelectionLayer({
   shapes,
   textElements,
   frames,
+  frameDisplayPositions,
   liveDrag,
   remoteDragByElementId,
   x,
@@ -78,7 +81,7 @@ export function RemoteSelectionLayer({
     }
     const frame = frames.find((f) => f.id === id);
     if (frame) {
-      const pos = livePos ?? { x: frame.x, y: frame.y };
+      const pos = livePos ?? frameDisplayPositions?.get(id) ?? { x: frame.x, y: frame.y };
       return { ...pos, width: frame.width, height: frame.height };
     }
     return null;

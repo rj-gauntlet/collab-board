@@ -1,11 +1,11 @@
-# CollabBoard — 3–5 Minute Presentation Script
+# CollabBoard — Video Presentation Script
 
-**Approximate length:** ~4 minutes at a relaxed speaking pace.  
+**Approximate length:** Up to 6 minutes at a relaxed speaking pace.  
 **Use the [SHOW] / [DEMO] cues to switch to the app and demonstrate.**
 
 ---
 
-## 1. Introduction — Who It’s For & What Problem It Solves (0:00–0:45)
+## 1. Introduction — Who It’s For & What Problem It Solves (0:00–0:50)
 
 Hi. I’m going to show you **CollabBoard**.
 
@@ -19,7 +19,7 @@ Hi. I’m going to show you **CollabBoard**.
 
 ---
 
-## 2. Getting Started & Your Boards (0:35–1:05)
+## 2. Getting Started & Your Boards (0:50–1:20)
 
 **[SHOW: Home page]**
 
@@ -31,7 +31,7 @@ Each board has a name in the header that anyone with the link can edit. If someo
 
 ---
 
-## 3. The Canvas (1:05–2:15)
+## 3. The Canvas (1:20–2:35)
 
 **[SHOW: Board with toolbar and canvas]**
 
@@ -43,23 +43,25 @@ You can drag elements around, resize them with the transformer when selected, an
 
 **[DEMO: Draw a connector between two elements, or show an existing one]**
 
-Pan and zoom with the mouse: scroll to pan, Ctrl+scroll to zoom. The zoom controls in the bottom-right let you fit the whole board on screen. There’s a grid overlay and snap-to-grid if you want alignment. You get **undo and redo** — up to 50 steps — and you can export the board as a PNG from the header.
+Pan and zoom with the mouse: scroll to zoom, drag to pan. The zoom controls in the bottom-right let you fit the whole board on screen. There’s a grid overlay and snap-to-grid if you want alignment. You get **undo and redo** — up to 50 steps.
+
+**Export** is in the toolbar: one click downloads a PNG of the **entire board** — every element, not just what’s on screen — and the file is named after the board so it’s easy to find later.
 
 **[Optional: Quick multi-select, copy/paste, or delete to show editing]**
 
 ---
 
-## 4. Real-Time Collaboration (2:15–2:45)
+## 4. Real-Time Collaboration (2:35–3:10)
 
 **[SHOW: Same board in two windows/browsers, or mention it]**
 
-CollabBoard is built for collaboration. When someone else is on the same board, you see their **cursor** with their name. If they drag a sticky note or shape, you see it move in real time. All elements are stored in the cloud, so everyone stays in sync. You don’t need to refresh; changes appear as they happen.
+CollabBoard is built for collaboration. When someone else is on the same board, you see their **cursor** with their name. If they drag a sticky note, shape, or frame, you see it move in real time — and when they drop it, it stays where they put it on your screen too; no jump-back. All elements are stored in the cloud, so everyone stays in sync. You don’t need to refresh; changes appear as they happen.
 
 ---
 
-## 5. CollabBot — AI Board Control (2:45–4:00)
+## 5. CollabBot — AI Board Control (3:10–4:45)
 
-**[SHOW: Open CollabBot panel from the toolbar]**
+**[SHOW: Open CollabBot panel from the bottom-right]**
 
 The standout feature is **CollabBot** — an AI assistant that controls the board from natural language.
 
@@ -69,32 +71,32 @@ You can say things like:
 
 - *“Add three sticky notes: Idea A, Idea B, Idea C.”*
 - *“Create a flowchart.”* — CollabBot adds a frame, steps, and arrows.
-- *“Create a SWOT analysis.”* — You get a 2×2 grid with Strengths, Weaknesses, Opportunities, and Threats.
+- *“Create a SWOT analysis.”* — You get four frames: Strengths, Weaknesses, Opportunities, and Threats.
 - *“Create a user journey map with five stages.”* — It sets up stages and connectors.
 - *“Arrange these notes in a grid”* or *“Create a 4×4 grid of sticky notes.”*
 - *“Move the pink note to the right”* or *“Clear the board.”*
 
-**[DEMO: Say one instruction and show the result]**
+**[DEMO: Say one instruction and show the result; optionally ask “What’s on the board?” to show the concise list]**
 
-CollabBot uses the current board state to understand “the pink note” or “the frame called Sprint Planning,” and it can run several steps in one go — for example, create a template and then adjust it. So you can brainstorm in plain English instead of clicking through the toolbar every time.
+CollabBot uses the current board state to understand “the pink note” or “the frame called Sprint Planning.” You can ask *“What’s on the board?”* and get a clear, readable list — one item per line, with color names instead of codes. The chat remembers what it’s already done, so if you close and reopen the panel, it won’t re-run the last command. You can brainstorm in plain English instead of clicking through the toolbar every time.
 
 ---
 
-## 6. Smart Cluster (4:00–4:15)
+## 6. Smart Cluster (4:45–5:05)
 
 **[Optional: Show Cluster button]**
 
-There’s also **Smart Cluster**. Select a set of sticky notes and click **Cluster**. The AI groups them into a few themes and shows you labels and summaries. It’s useful for turning a wall of ideas into clear categories.
+There’s also **Smart Cluster**. Select a set of sticky notes and click **Cluster**. The AI groups them into themes and shows you labels and summaries. It’s useful for turning a wall of ideas into clear categories.
 
 ---
 
-## 7. Wrap-Up (4:15–4:35)
+## 7. Wrap-Up (5:05–5:50)
 
 **[SHOW: Full board or home]**
 
 CollabBoard is built with **Next.js**, **Firebase** for auth and real-time data, and **Konva** for the canvas. The AI side uses the **Vercel AI SDK** and **GPT-4o-mini** for CollabBot and Smart Cluster.
 
-In short: it’s a collaborative whiteboard with real-time sync, rich editing, and AI that lets you create and arrange content by just asking. Thanks for watching; I’m happy to take questions.
+In short: it’s a collaborative whiteboard with real-time sync, smooth collaboration — including frame drags — rich editing, full-board export, and AI that lets you create and arrange content by just asking. Thanks for watching; I’m happy to take questions.
 
 ---
 
@@ -108,10 +110,12 @@ In short: it’s a collaborative whiteboard with real-time sync, rich editing, a
 | Templates          | “Create a flowchart” or “Create a SWOT analysis.” |
 | Grid / layout      | “Create a 4×4 grid of sticky notes” or “Arrange these in a grid.” |
 | Clear / delete     | “Clear the board” or select and delete. |
+| CollabBot polish   | “What’s on the board?” (concise list); close/reopen panel (no re-run). |
 | Smart Cluster      | Select several notes → Cluster → show themes. |
-| Export             | Header → Export → show PNG. |
+| Export             | Toolbar → Export → full board PNG, filename = board name. |
 | Undo / redo        | Make a change, Ctrl+Z, Ctrl+Y. |
+| Collaboration      | Two browsers: drag frame/note, show no jump on the other client. |
 
 ---
 
-*Adjust timing by shortening the canvas section or expanding CollabBot examples. Keep CollabBot as the main “wow” moment.*
+*Keep CollabBot as the main “wow” moment. Use the extra time to demo one more CollabBot command or a quick two-browser collaboration moment if you have it set up.*
