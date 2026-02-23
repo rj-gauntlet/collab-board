@@ -20,7 +20,7 @@ interface ShapesLayerProps {
   onShapeUpdate: (shape: ShapeElement) => void;
   onShapeContextMenu?: (shape: ShapeElement, evt: MouseEvent) => void;
   onDragStart: (elementId: string) => void;
-  onDragMove: (elementId: string, x: number, y: number) => void;
+  onDragMove: (positions: { elementId: string; x: number; y: number }[]) => void;
   onDragEnd: () => void;
   snapEnabled?: boolean;
   x?: number;
@@ -153,7 +153,21 @@ export function ShapesLayer({
             }}
             onContextMenu={(evt) => onShapeContextMenu?.(shape, evt)}
             onDragStart={() => onDragStart(shape.id)}
-            onDragMove={(dx, dy) => onDragMove(shape.id, dx, dy)}
+            onDragMove={(dx, dy) => {
+              if (selectedIds.size > 1) {
+                const positions = Array.from(selectedIds)
+                  .map((id) => {
+                    const node = selectedRefs.get(id);
+                    return node
+                      ? { elementId: id, x: (node as Konva.Node).x(), y: (node as Konva.Node).y() }
+                      : null;
+                  })
+                  .filter(Boolean) as { elementId: string; x: number; y: number }[];
+                if (positions.length > 0) onDragMove(positions);
+              } else {
+                onDragMove([{ elementId: shape.id, x: dx, y: dy }]);
+              }
+            }}
             onDragEnd={onDragEnd}
             remoteX={remoteDrag?.x}
             remoteY={remoteDrag?.y}

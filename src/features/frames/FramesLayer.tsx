@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useCallback, useState, useRef, useEffect } from "react";
-import { Layer, Transformer } from "react-konva";
+import { Layer, Transformer, Rect, Text, Line, Group } from "react-konva";
 import Konva from "konva";
 import { FrameNode, type RequestEditTitleFn } from "./FrameNode";
+import { useRemoteDragging } from "@/features/sticky-notes/useRemoteDragging";
 import { persistFrame } from "./usePersistedFrames";
 import { snapPos } from "@/features/whiteboard/snapGrid";
 import type { FrameElement } from "./types";
+import { FRAME_TITLE_BAR_HEIGHT } from "./types";
 
 interface FramesLayerProps {
   boardId: string;
@@ -18,6 +20,7 @@ interface FramesLayerProps {
   onRequestEditTitle?: RequestEditTitleFn;
   onFrameContextMenu?: (frame: FrameElement, evt: MouseEvent) => void;
   onDragStart: (elementId: string) => void;
+  onDragMove?: (positions: { elementId: string; x: number; y: number }[]) => void;
   onDragEnd: () => void;
   snapEnabled?: boolean;
   x?: number;
@@ -36,6 +39,7 @@ export function FramesLayer({
   onRequestEditTitle,
   onFrameContextMenu,
   onDragStart,
+  onDragMove,
   onDragEnd,
   snapEnabled = false,
   x = 0,
@@ -45,6 +49,71 @@ export function FramesLayer({
 }: FramesLayerProps) {
   const [selectedRefs, setSelectedRefs] = useState<Map<string, Konva.Node>>(new Map());
   const multiTrRef = useRef<Konva.Transformer>(null);
+  const remoteDragging = useRemoteDragging(boardId, userId);
+  const remoteDraggingByElementId = new Map(
+    remoteDragging.map((d) => [d.elementId, d])
+  );
+
+  // When remote drag ends (other user dropped), keep showing last position briefly so we don't flash
+  // back to stale persisted position before Firestore update arrives.
+  const LINGER_MS = 400;
+  const previousRemoteRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const lingeredRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const lingerTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [, setLingerTick] = useState(0);
+
+  const getDisplayPosition = useCallback(
+    (frame: FrameElement): { x: number; y: number } => {
+      const id = frame.id;
+      const remote = remoteDraggingByElementId.get(id);
+      if (remote) return { x: remote.x, y: remote.y };
+
+      const lingered = lingeredRef.current.get(id);
+      if (lingered) {
+        const caughtUp =
+          Math.abs(frame.x - lingered.x) < 1 && Math.abs(frame.y - lingered.y) < 1;
+        if (caughtUp) {
+          lingeredRef.current.delete(id);
+          const t = lingerTimeoutsRef.current.get(id);
+          if (t) {
+            clearTimeout(t);
+            lingerTimeoutsRef.current.delete(id);
+          }
+          return { x: frame.x, y: frame.y };
+        }
+        return lingered;
+      }
+
+      const previous = previousRemoteRef.current.get(id);
+      if (previous) {
+        lingeredRef.current.set(id, previous);
+        if (!lingerTimeoutsRef.current.has(id)) {
+          const t = setTimeout(() => {
+            lingeredRef.current.delete(id);
+            lingerTimeoutsRef.current.delete(id);
+            setLingerTick((n) => n + 1);
+          }, LINGER_MS);
+          lingerTimeoutsRef.current.set(id, t);
+        }
+        return previous;
+      }
+
+      return { x: frame.x, y: frame.y };
+    },
+    [remoteDraggingByElementId]
+  );
+
+  // Keep previous remote in sync for next render (so we detect "just dropped").
+  previousRemoteRef.current = new Map(
+    Array.from(remoteDraggingByElementId.entries()).map(([id, d]) => [id, { x: d.x, y: d.y }])
+  );
+
+  useEffect(() => {
+    return () => {
+      lingerTimeoutsRef.current.forEach((t) => clearTimeout(t));
+      lingerTimeoutsRef.current.clear();
+    };
+  }, []);
 
   const onRegisterSelectRef = useCallback((id: string, node: Konva.Node | null) => {
     setSelectedRefs((prev) => {
@@ -114,16 +183,68 @@ export function FramesLayer({
 
   return (
     <Layer listening={true} x={x} y={y} scaleX={scaleX} scaleY={scaleY}>
-      {frames.map((frame) => (
-        <FrameNode
-          key={frame.id}
-          frame={frame}
-          isSelected={selectedIds.has(frame.id)}
-          isMultiSelectMode={isMultiSelect}
-          onSelect={(shiftKey) => onSelectFrame(frame.id, shiftKey)}
-          onRegisterSelectRef={onRegisterSelectRef}
-          onUpdate={(updates) => {
-              // Snap position on drag-end (position-only update, no resize)
+      {frames.map((frame) => {
+        const { x: displayX, y: displayY } = getDisplayPosition(frame);
+        const isRemoteOrLingered =
+          remoteDraggingByElementId.has(frame.id) || lingeredRef.current.has(frame.id);
+
+        if (isRemoteOrLingered) {
+          return (
+            <Group key={frame.id} x={displayX} y={displayY} listening={false}>
+              <Rect
+                width={frame.width}
+                height={frame.height}
+                fill={frame.fill}
+                stroke={frame.stroke}
+                strokeWidth={Math.max(1, frame.strokeWidth)}
+                cornerRadius={8}
+                shadowColor="rgba(62, 39, 35, 0.2)"
+                shadowBlur={12}
+                shadowOffsetY={3}
+              />
+              <Rect
+                x={0}
+                y={0}
+                width={frame.width}
+                height={FRAME_TITLE_BAR_HEIGHT}
+                fill="rgba(93, 64, 55, 0.18)"
+                cornerRadius={[8, 8, 0, 0]}
+                listening={false}
+              />
+              <Line
+                points={[0, FRAME_TITLE_BAR_HEIGHT, frame.width, FRAME_TITLE_BAR_HEIGHT]}
+                stroke="rgba(93, 64, 55, 0.45)"
+                strokeWidth={2}
+                listening={false}
+              />
+              <Text
+                x={8}
+                y={4}
+                width={frame.width - 16}
+                height={FRAME_TITLE_BAR_HEIGHT - 8}
+                text={frame.title || "Double-click to add title"}
+                fontSize={14}
+                fontStyle="600"
+                fontFamily="sans-serif"
+                fill={frame.title ? "#3e2723" : "#9ca3af"}
+                wrap="none"
+                ellipsis={true}
+                verticalAlign="middle"
+                listening={false}
+              />
+            </Group>
+          );
+        }
+
+        return (
+          <FrameNode
+            key={frame.id}
+            frame={frame}
+            isSelected={selectedIds.has(frame.id)}
+            isMultiSelectMode={isMultiSelect}
+            onSelect={(shiftKey) => onSelectFrame(frame.id, shiftKey)}
+            onRegisterSelectRef={onRegisterSelectRef}
+            onUpdate={(updates) => {
               if (
                 snapEnabled &&
                 updates.x !== undefined &&
@@ -137,12 +258,14 @@ export function FramesLayer({
                 handleChange(frame, updates);
               }
             }}
-          onRequestEditTitle={onRequestEditTitle}
-          onContextMenu={(evt) => onFrameContextMenu?.(frame, evt)}
-          onDragStart={() => onDragStart(frame.id)}
-          onDragEnd={onDragEnd}
-        />
-      ))}
+            onRequestEditTitle={onRequestEditTitle}
+            onContextMenu={(evt) => onFrameContextMenu?.(frame, evt)}
+            onDragStart={() => onDragStart(frame.id)}
+            onDragMove={onDragMove ? (dx, dy) => onDragMove([{ elementId: frame.id, x: dx, y: dy }]) : undefined}
+            onDragEnd={onDragEnd}
+          />
+        );
+      })}
       {isMultiSelect && multiSelectNodes.length > 0 && (
         <Transformer
           ref={multiTrRef}

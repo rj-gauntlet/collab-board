@@ -14,6 +14,9 @@ import Konva from "konva";
 import { Stage, Layer, Rect } from "react-konva";
 import { useSyncCursor } from "@/features/cursors/useSyncCursor";
 import { RemoteCursors } from "@/features/cursors/RemoteCursors";
+import { useSyncSelection } from "./useSyncSelection";
+import { useRemoteSelections } from "./useRemoteSelections";
+import { RemoteSelectionLayer } from "./RemoteSelectionLayer";
 import { clearBoard } from "./clearBoard";
 import {
   StickyNotesLayer,
@@ -23,7 +26,11 @@ import {
   createDefaultNote,
 } from "@/features/sticky-notes";
 import { useRemoteNotes } from "@/features/sticky-notes/useRemoteNotes";
-import { useSyncDragging } from "@/features/sticky-notes/useSyncDragging";
+import {
+  useSyncDragging,
+  type DraggingElement,
+} from "@/features/sticky-notes/useSyncDragging";
+import { useRemoteDragging } from "@/features/sticky-notes/useRemoteDragging";
 import {
   ShapesLayer,
   usePersistedShapes,
@@ -276,14 +283,50 @@ export const WhiteboardCanvas = forwardRef<
     elementId: string | null;
     x: number;
     y: number;
-  }>({ isDragging: false, elementId: null, x: 0, y: 0 });
+    elements: DraggingElement[];
+  }>({ isDragging: false, elementId: null, x: 0, y: 0, elements: [] });
   // Ref so cleanup effects can read the current dragging element without stale closures.
   const draggingElementIdRef = useRef<string | null>(null);
+  // Latest drag position (written by onDragMove) so rAF loop can push updates every frame.
+  const dragPositionRef = useRef({ x: 0, y: 0 });
+  // Latest full elements array (multi-drag); written by onDragMove, read by rAF.
+  const dragElementsRef = useRef<DraggingElement[]>([]);
   // useLayoutEffect runs synchronously after every render, before passive effects,
   // so the ref is always current by the time Firestore cleanup effects fire.
   useLayoutEffect(() => {
     draggingElementIdRef.current = draggingState.elementId;
   }, [draggingState.elementId]);
+  // During drag, re-render every frame with latest positions so outline and remote sync track smoothly.
+  useEffect(() => {
+    if (!draggingState.isDragging || !draggingState.elementId) return;
+    let rafId: number;
+    const tick = () => {
+      setDraggingState((prev) => {
+        if (!prev.isDragging) return prev;
+        const latest = dragElementsRef.current;
+        if (latest.length === 0) return prev;
+        const same =
+          latest.length === prev.elements.length &&
+          latest.every(
+            (e, i) =>
+              prev.elements[i]?.elementId === e.elementId &&
+              prev.elements[i]?.x === e.x &&
+              prev.elements[i]?.y === e.y
+          );
+        if (same) return prev;
+        return {
+          ...prev,
+          elementId: latest[0].elementId,
+          x: latest[0].x,
+          y: latest[0].y,
+          elements: [...latest],
+        };
+      });
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [draggingState.isDragging, draggingState.elementId]);
 
   type ContextMenu =
     | { type: "note"; note: StickyNoteElement; clientX: number; clientY: number }
@@ -327,6 +370,13 @@ export const WhiteboardCanvas = forwardRef<
   } = usePanZoom(width, height);
 
   const { syncCursor } = useSyncCursor(boardId, userId, displayName);
+  useSyncSelection(boardId, userId, selectedIds);
+  const remoteSelections = useRemoteSelections(boardId, userId);
+  const remoteDragging = useRemoteDragging(boardId, userId);
+  const remoteDragByElementId = React.useMemo(
+    () => new Map(remoteDragging.map((d) => [d.elementId, { x: d.x, y: d.y }])),
+    [remoteDragging]
+  );
 
   const persistedNotes = usePersistedNotes(boardId);
   const remoteNotes = useRemoteNotes(boardId);
@@ -341,9 +391,7 @@ export const WhiteboardCanvas = forwardRef<
     boardId,
     userId,
     draggingState.isDragging,
-    draggingState.elementId,
-    draggingState.x,
-    draggingState.y
+    draggingState.elements
   );
 
   useEffect(() => {
@@ -2113,6 +2161,22 @@ export const WhiteboardCanvas = forwardRef<
     [activeTool, connectorFrom, syncCursor, handlePanMove, screenToBoard, selectionBox]
   );
 
+  // Sync cursor on window mousemove so it keeps updating during drag (Stage may not get move events then).
+  useEffect(() => {
+    const onWindowMouseMove = (evt: MouseEvent) => {
+      const stage = stageRef.current;
+      if (!stage?.container) return;
+      const rect = stage.container().getBoundingClientRect();
+      const stageX = evt.clientX - rect.left;
+      const stageY = evt.clientY - rect.top;
+      if (stageX < 0 || stageY < 0 || stageX > rect.width || stageY > rect.height) return;
+      const { x, y } = screenToBoard(stageX, stageY);
+      syncCursor(x, y);
+    };
+    window.addEventListener("mousemove", onWindowMouseMove, { passive: true });
+    return () => window.removeEventListener("mousemove", onWindowMouseMove);
+  }, [syncCursor, screenToBoard]);
+
   const handleStageMouseUp = useCallback(() => {
     if (selectionBox) {
       const left = Math.min(selectionBox.startX, selectionBox.endX);
@@ -2291,11 +2355,41 @@ export const WhiteboardCanvas = forwardRef<
             setEditingFrameTitle({ frameId, initialTitle })
           }
           onFrameContextMenu={handleFrameContextMenu}
-          onDragStart={(elementId) =>
-            setDraggingState({ isDragging: true, elementId, x: 0, y: 0 })
-          }
+          onDragStart={(elementId) => {
+            const el = framesRef.current.find((f) => f.id === elementId);
+            const x = el?.x ?? 0;
+            const y = el?.y ?? 0;
+            const elements = [{ elementId, x, y }];
+            dragElementsRef.current = elements;
+            setDraggingState({
+              isDragging: true,
+              elementId,
+              x,
+              y,
+              elements,
+            });
+          }}
+          onDragMove={(positions) => {
+            if (positions.length === 0) return;
+            dragPositionRef.current = { x: positions[0].x, y: positions[0].y };
+            dragElementsRef.current = positions;
+            setDraggingState((prev) => ({
+              ...prev,
+              isDragging: true,
+              elementId: positions[0].elementId,
+              x: positions[0].x,
+              y: positions[0].y,
+              elements: positions,
+            }));
+          }}
           onDragEnd={() =>
-            setDraggingState({ isDragging: false, elementId: null, x: 0, y: 0 })
+            setDraggingState({
+              isDragging: false,
+              elementId: null,
+              x: 0,
+              y: 0,
+              elements: [],
+            })
           }
           snapEnabled={snapEnabled}
           x={stageX}
@@ -2314,21 +2408,49 @@ export const WhiteboardCanvas = forwardRef<
           onSelectNote={handleSelectNote}
           onNoteUpdate={handleNoteUpdate}
           onNoteContextMenu={handleNoteContextMenu}
-          onDragStart={(elementId) =>
-            setDraggingState({ isDragging: true, elementId, x: 0, y: 0 })
-          }
-          onDragMove={(elementId, x, y) => {
-            setDraggingState((prev) => ({ ...prev, isDragging: true, elementId, x, y }));
+          onDragStart={(elementId) => {
+            const el = notesRef.current.find((n) => n.id === elementId);
+            const x = el?.x ?? 0;
+            const y = el?.y ?? 0;
+            const elements = [{ elementId, x, y }];
+            dragElementsRef.current = elements;
+            setDraggingState({
+              isDragging: true,
+              elementId,
+              x,
+              y,
+              elements,
+            });
+          }}
+          onDragMove={(positions) => {
+            if (positions.length === 0) return;
+            dragPositionRef.current = { x: positions[0].x, y: positions[0].y };
+            dragElementsRef.current = positions;
+            setDraggingState((prev) => ({
+              ...prev,
+              isDragging: true,
+              elementId: positions[0].elementId,
+              x: positions[0].x,
+              y: positions[0].y,
+              elements: positions,
+            }));
             setLocalNoteOverrides((prev) => {
-              const existing = prev.get(elementId) ?? notesRef.current.find((n) => n.id === elementId);
-              if (!existing) return prev;
               const next = new Map(prev);
-              next.set(elementId, { ...existing, x, y });
+              for (const p of positions) {
+                const existing = prev.get(p.elementId) ?? notesRef.current.find((n) => n.id === p.elementId);
+                if (existing) next.set(p.elementId, { ...existing, x: p.x, y: p.y });
+              }
               return next;
             });
           }}
           onDragEnd={() =>
-            setDraggingState({ isDragging: false, elementId: null, x: 0, y: 0 })
+            setDraggingState({
+              isDragging: false,
+              elementId: null,
+              x: 0,
+              y: 0,
+              elements: [],
+            })
           }
           snapEnabled={snapEnabled}
           x={stageX}
@@ -2345,21 +2467,49 @@ export const WhiteboardCanvas = forwardRef<
           onSelectShape={handleSelectShape}
           onShapeUpdate={handleShapeUpdate}
           onShapeContextMenu={handleShapeContextMenu}
-          onDragStart={(elementId) =>
-            setDraggingState({ isDragging: true, elementId, x: 0, y: 0 })
-          }
-          onDragMove={(elementId, x, y) => {
-            setDraggingState((prev) => ({ ...prev, isDragging: true, elementId, x, y }));
+          onDragStart={(elementId) => {
+            const el = shapesRef.current.find((s) => s.id === elementId);
+            const x = el?.x ?? 0;
+            const y = el?.y ?? 0;
+            const elements = [{ elementId, x, y }];
+            dragElementsRef.current = elements;
+            setDraggingState({
+              isDragging: true,
+              elementId,
+              x,
+              y,
+              elements,
+            });
+          }}
+          onDragMove={(positions) => {
+            if (positions.length === 0) return;
+            dragPositionRef.current = { x: positions[0].x, y: positions[0].y };
+            dragElementsRef.current = positions;
+            setDraggingState((prev) => ({
+              ...prev,
+              isDragging: true,
+              elementId: positions[0].elementId,
+              x: positions[0].x,
+              y: positions[0].y,
+              elements: positions,
+            }));
             setLocalShapeOverrides((prev) => {
-              const existing = prev.get(elementId) ?? shapesRef.current.find((s) => s.id === elementId);
-              if (!existing) return prev;
               const next = new Map(prev);
-              next.set(elementId, { ...existing, x, y });
+              for (const p of positions) {
+                const existing = prev.get(p.elementId) ?? shapesRef.current.find((s) => s.id === p.elementId);
+                if (existing) next.set(p.elementId, { ...existing, x: p.x, y: p.y });
+              }
               return next;
             });
           }}
           onDragEnd={() =>
-            setDraggingState({ isDragging: false, elementId: null, x: 0, y: 0 })
+            setDraggingState({
+              isDragging: false,
+              elementId: null,
+              x: 0,
+              y: 0,
+              elements: [],
+            })
           }
           snapEnabled={snapEnabled}
           x={stageX}
@@ -2376,22 +2526,51 @@ export const WhiteboardCanvas = forwardRef<
           onTextUpdate={handleTextUpdate}
           onRequestEditText={(id) => setEditingTextId(id)}
           onTextContextMenu={handleTextContextMenu}
-          onDragStart={(elementId) =>
-            setDraggingState({ isDragging: true, elementId, x: 0, y: 0 })
-          }
-          onDragMove={(elementId, x, y) => {
+          onDragStart={(elementId) => {
+            const el = textElementsRef.current.find((t) => t.id === elementId);
+            const x = el?.x ?? 0;
+            const y = el?.y ?? 0;
+            const elements = [{ elementId, x, y }];
+            dragElementsRef.current = elements;
+            setDraggingState({
+              isDragging: true,
+              elementId,
+              x,
+              y,
+              elements,
+            });
+          }}
+          onDragMove={(positions) => {
+            if (positions.length === 0) return;
+            dragPositionRef.current = { x: positions[0].x, y: positions[0].y };
+            dragElementsRef.current = positions;
+            setDraggingState((prev) => ({
+              ...prev,
+              isDragging: true,
+              elementId: positions[0].elementId,
+              x: positions[0].x,
+              y: positions[0].y,
+              elements: positions,
+            }));
             setLocalTextOverrides((prev) => {
-              const existing =
-                prev.get(elementId) ??
-                textElementsRef.current.find((t) => t.id === elementId);
-              if (!existing) return prev;
               const next = new Map(prev);
-              next.set(elementId, { ...existing, x, y });
+              for (const p of positions) {
+                const existing =
+                  prev.get(p.elementId) ??
+                  textElementsRef.current.find((t) => t.id === p.elementId);
+                if (existing) next.set(p.elementId, { ...existing, x: p.x, y: p.y });
+              }
               return next;
             });
           }}
           onDragEnd={() =>
-            setDraggingState({ isDragging: false, elementId: null, x: 0, y: 0 })
+            setDraggingState({
+              isDragging: false,
+              elementId: null,
+              x: 0,
+              y: 0,
+              elements: [],
+            })
           }
           snapEnabled={snapEnabled}
           x={stageX}
@@ -2403,6 +2582,7 @@ export const WhiteboardCanvas = forwardRef<
           connectors={connectors}
           notes={notes}
           shapes={shapes}
+          positionOverrides={remoteDragByElementId}
           connectorFrom={connectorFrom}
           connectorPreviewTo={connectorPreviewTo}
           onRequestEditLabel={(connectorId) => {
@@ -2430,6 +2610,23 @@ export const WhiteboardCanvas = forwardRef<
             />
           </Layer>
         )}
+        <RemoteSelectionLayer
+          remoteSelections={remoteSelections}
+          notes={notes}
+          shapes={shapes}
+          textElements={textElements}
+          frames={frames}
+          liveDrag={
+            draggingState.isDragging && draggingState.elementId
+              ? { elementId: draggingState.elementId, x: draggingState.x, y: draggingState.y }
+              : null
+          }
+          remoteDragByElementId={remoteDragByElementId}
+          x={stageX}
+          y={stageY}
+          scaleX={scale}
+          scaleY={scale}
+        />
         <RemoteCursors
           boardId={boardId}
           excludeUserId={userId}

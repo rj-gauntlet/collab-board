@@ -21,14 +21,32 @@ function parseDragging(
 
   for (const [userId, value] of Object.entries(data)) {
     if (excludeUserId && userId === excludeUserId) continue;
-    const state = value as DraggingState;
+    const state = value as Record<string, unknown>;
+    const updatedAt = (state?.updatedAt as number) ?? 0;
+
+    const elements = state?.elements as Array<{ elementId: string; x: number; y: number }> | undefined;
+    if (Array.isArray(elements)) {
+      for (const e of elements) {
+        if (e?.elementId && typeof e.x === "number" && typeof e.y === "number") {
+          result.push({
+            userId,
+            elementId: e.elementId,
+            x: e.x,
+            y: e.y,
+            updatedAt,
+          });
+        }
+      }
+      continue;
+    }
+
     if (state?.elementId && typeof state.x === "number" && typeof state.y === "number") {
       result.push({
         userId,
-        elementId: state.elementId,
-        x: state.x,
-        y: state.y,
-        updatedAt: state.updatedAt ?? 0,
+        elementId: state.elementId as string,
+        x: state.x as number,
+        y: state.y as number,
+        updatedAt,
       });
     }
   }

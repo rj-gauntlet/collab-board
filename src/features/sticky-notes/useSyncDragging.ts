@@ -4,30 +4,34 @@ import { useEffect, useRef, useCallback } from "react";
 import { ref, set, remove } from "firebase/database";
 import { getFirebaseDatabase } from "@/lib/firebase";
 
+export interface DraggingElement {
+  elementId: string;
+  x: number;
+  y: number;
+}
+
 const THROTTLE_MS = 40;
 
 export function useSyncDragging(
   boardId: string,
   userId: string,
   isDragging: boolean,
-  elementId: string | null,
-  x: number,
-  y: number
+  elements: DraggingElement[]
 ) {
   const lastWriteRef = useRef<number>(0);
-  const pendingRef = useRef<{ elementId: string; x: number; y: number } | null>(
-    null
-  );
+  const pendingRef = useRef<DraggingElement[] | null>(null);
   const rafRef = useRef<number | null>(null);
 
   const writeToRtdb = useCallback(
-    (elementId: string, x: number, y: number) => {
+    (els: DraggingElement[]) => {
       const rtdb = getFirebaseDatabase();
       const draggingRef = ref(rtdb, `dragging/${boardId}/${userId}`);
+      if (els.length === 0) {
+        remove(draggingRef);
+        return;
+      }
       set(draggingRef, {
-        elementId,
-        x,
-        y,
+        elements: els.map((e) => ({ elementId: e.elementId, x: e.x, y: e.y })),
         updatedAt: Date.now(),
       });
     },
@@ -45,16 +49,16 @@ export function useSyncDragging(
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
       const pending = pendingRef.current;
-      if (pending) {
+      if (pending?.length) {
         pendingRef.current = null;
         lastWriteRef.current = Date.now();
-        writeToRtdb(pending.elementId, pending.x, pending.y);
+        writeToRtdb(pending);
       }
     });
   }, [writeToRtdb]);
 
   useEffect(() => {
-    if (!isDragging || !elementId) {
+    if (!isDragging || elements.length === 0) {
       clearRtdb();
       return;
     }
@@ -62,9 +66,9 @@ export function useSyncDragging(
     const now = Date.now();
     if (now - lastWriteRef.current >= THROTTLE_MS) {
       lastWriteRef.current = now;
-      writeToRtdb(elementId, x, y);
+      writeToRtdb(elements);
     } else {
-      pendingRef.current = { elementId, x, y };
+      pendingRef.current = elements;
       scheduleFlush();
     }
 
@@ -73,7 +77,7 @@ export function useSyncDragging(
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [isDragging, elementId, x, y, writeToRtdb, clearRtdb, scheduleFlush]);
+  }, [isDragging, elements, writeToRtdb, clearRtdb, scheduleFlush]);
 
   useEffect(() => {
     const rtdb = getFirebaseDatabase();

@@ -130,10 +130,15 @@ function closestAnchorToPoint(anchors: Point[], point: Point): Point {
   return best;
 }
 
+/** Override (x,y) for an element being dragged remotely so connector endpoints track during drag. */
+export type PositionOverrides = Map<string, { x: number; y: number }>;
+
 interface ConnectorsLayerProps {
   connectors: ConnectorElement[];
   notes: StickyNoteElement[];
   shapes: ShapeElement[];
+  /** When set, endpoint positions use these overrides (e.g. remote drag) so lines track during drag. */
+  positionOverrides?: PositionOverrides;
   /** When set, the connector tool has picked a first endpoint; show preview to cursor. */
   connectorFrom?: { id: string; type: ConnectorElement["fromType"] } | null;
   /** Board-space cursor position while drawing a connector (other end of preview). */
@@ -154,6 +159,7 @@ export function ConnectorsLayer({
   connectors,
   notes,
   shapes,
+  positionOverrides,
   connectorFrom,
   connectorPreviewTo,
   onRequestEditLabel,
@@ -178,14 +184,19 @@ export function ConnectorsLayer({
 
   const getAnchors = useMemo(() => {
     return (id: string, type: ConnectorElement["fromType"]): Point[] | null => {
+      const override = positionOverrides?.get(id);
       if (type === "note") {
         const note = noteMap.get(id);
-        return note ? getNoteAnchors(note) : null;
+        if (!note) return null;
+        const n = override ? { ...note, x: override.x, y: override.y } : note;
+        return getNoteAnchors(n);
       }
       const shape = shapeMap.get(id);
-      return shape ? getShapeAnchors(shape) : null;
+      if (!shape) return null;
+      const s = override ? { ...shape, x: override.x, y: override.y } : shape;
+      return getShapeAnchors(s);
     };
-  }, [noteMap, shapeMap]);
+  }, [noteMap, shapeMap, positionOverrides]);
 
   const hasHandler = !!(onRequestEditLabel || onSelectConnector);
 

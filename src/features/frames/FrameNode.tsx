@@ -23,6 +23,7 @@ interface FrameNodeProps {
   onRequestEditTitle?: RequestEditTitleFn;
   onContextMenu?: (evt: MouseEvent) => void;
   onDragStart: () => void;
+  onDragMove?: (x: number, y: number) => void;
   onDragEnd: () => void;
 }
 
@@ -36,6 +37,7 @@ export function FrameNode({
   onRequestEditTitle,
   onContextMenu,
   onDragStart,
+  onDragMove,
   onDragEnd,
 }: FrameNodeProps) {
   const groupRef = useRef<Konva.Group>(null);
@@ -61,6 +63,14 @@ export function FrameNode({
     const node = groupRef.current;
     if (node) node.setAttr("data-elementId", frame.id);
   }, [frame.id]);
+
+  const handleDragMove = useCallback(
+    (e: Konva.KonvaEventObject<DragEvent>) => {
+      const node = e.target;
+      onDragMove?.(node.x(), node.y());
+    },
+    [onDragMove]
+  );
 
   const handleDragEnd = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
@@ -118,6 +128,7 @@ export function FrameNode({
         onTap={(e) => onSelect(e.evt.shiftKey)}
         onContextMenu={handleContextMenu}
         onDragStart={onDragStart}
+        onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
         onTransformEnd={handleTransformEnd}
         onMouseEnter={() => setIsHovered(true)}

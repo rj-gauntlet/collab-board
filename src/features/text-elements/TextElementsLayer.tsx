@@ -18,7 +18,7 @@ interface TextElementsLayerProps {
   onRequestEditText?: (id: string) => void;
   onTextContextMenu?: (text: TextElement, evt: MouseEvent) => void;
   onDragStart: (elementId: string) => void;
-  onDragMove?: (elementId: string, x: number, y: number) => void;
+  onDragMove?: (positions: { elementId: string; x: number; y: number }[]) => void;
   onDragEnd: (elementId: string, x: number, y: number) => void;
   snapEnabled?: boolean;
   x?: number;
@@ -92,7 +92,7 @@ export function TextElementsLayer({
           onRequestEditText={onRequestEditText}
           onContextMenu={(evt) => onTextContextMenu?.(text, evt)}
           onDragStart={() => onDragStart(text.id)}
-          onDragMove={(x, y) => onDragMove?.(text.id, x, y)}
+          onDragMove={(x, y) => onDragMove?.([{ elementId: text.id, x, y }])}
           onDragEnd={(newX, newY) => handleDragEnd(text, newX, newY)}
         />
       ))}

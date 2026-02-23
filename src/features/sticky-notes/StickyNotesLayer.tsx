@@ -28,7 +28,7 @@ interface StickyNotesLayerProps {
   onNoteUpdate: (note: StickyNoteElement) => void;
   onNoteContextMenu?: (note: StickyNoteElement, evt: MouseEvent) => void;
   onDragStart: (elementId: string) => void;
-  onDragMove: (elementId: string, x: number, y: number) => void;
+  onDragMove: (positions: { elementId: string; x: number; y: number }[]) => void;
   onDragEnd: () => void;
   snapEnabled?: boolean;
   x?: number;
@@ -228,7 +228,21 @@ export function StickyNotesLayer({
             onRegisterSelectRef={onRegisterSelectRef}
             onContextMenu={(evt) => onNoteContextMenu?.(note, evt)}
             onDragStart={() => onDragStart(note.id)}
-            onDragMove={(x, y) => onDragMove(note.id, x, y)}
+            onDragMove={(x, y) => {
+              if (selectedIds.size > 1) {
+                const positions = Array.from(selectedIds)
+                  .map((id) => {
+                    const node = selectedRefs.get(id);
+                    return node
+                      ? { elementId: id, x: (node as Konva.Node).x(), y: (node as Konva.Node).y() }
+                      : null;
+                  })
+                  .filter(Boolean) as { elementId: string; x: number; y: number }[];
+                if (positions.length > 0) onDragMove(positions);
+              } else {
+                onDragMove([{ elementId: note.id, x, y }]);
+              }
+            }}
             onDragEnd={(x, y) => handleDragEnd(note, x, y)}
           />
         );
