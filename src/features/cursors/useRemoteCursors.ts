@@ -3,33 +3,14 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { ref, onValue } from "firebase/database";
 import { getFirebaseDatabase } from "@/lib/firebase";
+import { userIdToColor } from "./userColor";
 import type { RemoteCursor } from "./types";
-
-const CURSOR_COLORS = [
-  "#ef4444",
-  "#f97316",
-  "#eab308",
-  "#22c55e",
-  "#14b8a6",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-];
 
 /** Max display update rate for remote cursors (avoids FPS drop in other tabs) */
 const DISPLAY_THROTTLE_MS = 33; // ~30fps
 
 /** Cursors not updated in this long are considered disconnected and hidden */
 const STALE_CURSOR_MS = 10_000;
-
-function hashToColor(userId: string): string {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const index = Math.abs(hash) % CURSOR_COLORS.length;
-  return CURSOR_COLORS[index];
-}
 
 function isCursorStale(updatedAt: number): boolean {
   return Date.now() - updatedAt > STALE_CURSOR_MS;
@@ -60,7 +41,7 @@ function parseCursors(
         y: pos.y,
         updatedAt,
         displayName: pos.displayName,
-        color: hashToColor(userId),
+        color: userIdToColor(userId),
       });
     }
   }

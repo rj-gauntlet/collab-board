@@ -12,12 +12,13 @@ import type { Tool } from "@/features/toolbar";
 import { PerformanceMonitor } from "@/components/PerformanceMonitor";
 import { useAuth } from "@/features/auth";
 import { UsersList } from "@/components/UsersList";
+import { PresenceJoinToast } from "@/components/PresenceJoinToast";
 import { generateBoardId } from "@/lib/utils";
 import { addUserBoard } from "@/features/boards/userBoardActions";
 import { useBoardName } from "@/features/boards/useBoardName";
 import { useBoardExists } from "@/features/boards/useBoardExists";
 import { setBoardName } from "@/features/boards/userBoardActions";
-import { useSmartCluster, BoardAgentChat } from "@/features/ai-agent";
+import { useSmartCluster, BoardAgentChat, type BoardStateSummary } from "@/features/ai-agent";
 
 export default function BoardPage() {
   const params = useParams();
@@ -25,7 +26,7 @@ export default function BoardPage() {
   const boardId = typeof params.boardId === "string" ? params.boardId : null;
   const isE2E = searchParams.get("e2e") === "1";
 
-  const { user, loading, displayName, signInWithGoogle, signOut } = useAuth();
+  const { user, loading, displayName, signInWithGoogle, signInAsTestUser, signOut } = useAuth();
   const [activeTool, setActiveTool] = useState<Tool>("hand");
   const [selectedCount, setSelectedCount] = useState(0);
   const [perfMonitorVisible, setPerfMonitorVisible] = useState(false);
@@ -34,8 +35,13 @@ export default function BoardPage() {
   const [nameEditing, setNameEditing] = useState(false);
   const [nameEditValue, setNameEditValue] = useState("");
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [copyLinkFeedback, setCopyLinkFeedback] = useState(false);
   const canvasRef = useRef<WhiteboardCanvasHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const boardStateSnapshotRef = useRef<BoardStateSummary[]>([]);
+  const onBoardStateSnapshot = useCallback((state: BoardStateSummary[]) => {
+    boardStateSnapshotRef.current = state;
+  }, []);
   const [canvasSize, setCanvasSize] = useState(() =>
     typeof window !== "undefined"
       ? { width: window.innerWidth, height: window.innerHeight }
@@ -147,6 +153,18 @@ export default function BoardPage() {
     await setBoardName(boardId, nameEditValue, user?.uid);
   };
 
+  const handleCopyBoardLink = useCallback(() => {
+    if (!boardId || typeof window === "undefined") return;
+    const url = `${window.location.origin}/${boardId}`;
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setCopyLinkFeedback(true);
+        setTimeout(() => setCopyLinkFeedback(false), 2000);
+      },
+      () => {}
+    );
+  }, [boardId]);
+
   if (loading) {
     return (
       <main className="font-sans flex h-screen items-center justify-center bg-[#fffbf0]">
@@ -156,13 +174,14 @@ export default function BoardPage() {
   }
 
   if (!user) {
+    const testUsers = ["Alex", "Jordan", "Sam", "Casey", "Riley"];
     return (
-      <main className="font-sans flex h-screen flex-col items-center justify-center gap-6 bg-[#fffbf0]">
+      <main className="font-sans flex min-h-screen flex-col items-center justify-center gap-6 overflow-y-auto bg-[#fffbf0] px-4 py-8">
         <h1 className="font-sans text-2xl font-extrabold tracking-tight text-[#3e2723]">
           CollabBoard
         </h1>
-        <p className="font-sans text-[#5d4037]">
-          Sign in with Google to collaborate on the whiteboard
+        <p className="font-sans text-center text-[#5d4037]">
+          Sign in to open this board and collaborate on the whiteboard
         </p>
         <button
           type="button"
@@ -189,6 +208,23 @@ export default function BoardPage() {
           </svg>
           Sign in with Google
         </button>
+        <section className="font-sans mt-2 flex flex-col items-center gap-2" aria-label="Test users for multiplayer">
+          <p className="text-xs font-medium text-[#5d4037]">
+            Or sign in as a test user (for multiplayer evaluation):
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {testUsers.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => signInAsTestUser(name)}
+                className="rounded-lg border border-[#ffe0b2] bg-white px-3 py-2 text-sm font-medium text-[#5d4037] shadow-sm transition hover:bg-[#fff8e1] hover:border-[#ff8f00]"
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </section>
       </main>
     );
   }
@@ -369,6 +405,29 @@ export default function BoardPage() {
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopyBoardLink}
+              className="font-sans flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
+              title="Copy board link to share"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              {copyLinkFeedback ? "Copied!" : "Copy link"}
+            </button>
             <UsersList
               boardId={boardId}
               currentUserId={user.uid}
@@ -388,6 +447,8 @@ export default function BoardPage() {
           </div>
         </div>
       </header>
+
+      <PresenceJoinToast boardId={boardId} currentUserId={user.uid} />
 
       {/* Smart Cluster message toast */}
       {smartClusterMessage && (
@@ -456,7 +517,11 @@ export default function BoardPage() {
             <BoardAgentChat
               boardId={boardId}
               canvasRef={canvasRef}
-              getBoardState={() => canvasRef.current?.getBoardState() ?? []}
+              getBoardState={() => {
+                const live = canvasRef.current?.getBoardState?.();
+                if (live != null && live.length > 0) return live;
+                return boardStateSnapshotRef.current;
+              }}
               className="mb-2"
             />
           </div>
@@ -478,6 +543,7 @@ export default function BoardPage() {
               gridVisible={gridVisible}
               snapEnabled={snapEnabled}
               onSelectionChange={setSelectedCount}
+              onBoardStateSnapshot={onBoardStateSnapshot}
             />
           </WhiteboardErrorBoundary>
         </div>

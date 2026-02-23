@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useBoardUsers } from "@/features/users";
 import { useRegisterBoardUser } from "@/features/users";
+import { userIdToColor } from "@/features/cursors";
 
 interface UsersListProps {
   boardId: string;
@@ -82,31 +83,34 @@ export function UsersList({
             </div>
           ) : (
             <ul className="max-h-64 overflow-y-auto py-1">
-              {users.map((u) => (
-                <li
-                  key={u.userId}
-                  className="flex items-center gap-2 px-3 py-2 text-sm"
-                  role="menuitem"
-                >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${
-                      u.online
-                        ? "bg-emerald-500"
-                        : "bg-[#ffcc80]"
-                    }`}
-                    title={u.online ? "Online" : "Offline"}
-                    aria-hidden
-                  />
-                  <span className="truncate text-[#3e2723]">
-                    {u.displayName}
-                    {u.userId === currentUserId && (
-                      <span className="ml-1 text-[#5d4037]">
-                        (you)
-                      </span>
-                    )}
-                  </span>
-                </li>
-              ))}
+              {users.map((u) => {
+                const color = userIdToColor(u.userId);
+                return (
+                  <li
+                    key={u.userId}
+                    className="flex items-center gap-2 px-3 py-2 text-sm"
+                    role="menuitem"
+                  >
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full border border-white shadow-sm"
+                      style={{
+                        backgroundColor: u.online ? color : "#e0e0e0",
+                        borderColor: u.online ? color : "#bdbdbd",
+                      }}
+                      title={u.online ? "Online" : "Offline — same color as their cursor when present"}
+                      aria-hidden
+                    />
+                    <span className="truncate text-[#3e2723]">
+                      {u.displayName}
+                      {u.userId === currentUserId && (
+                        <span className="ml-1 text-[#5d4037]">
+                          (you)
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

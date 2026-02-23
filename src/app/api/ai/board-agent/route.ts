@@ -1,7 +1,8 @@
-import { streamText, tool } from "ai";
+import { streamText, tool, createDataStreamResponse, formatDataStreamPart } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { jsonSchema } from "ai";
 import type { BoardStateSummary } from "@/features/ai-agent/board-agent-types";
+import { isAskingWhatIsOnBoard, formatBoardStateList } from "./board-agent-helpers";
 
 const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -9,20 +10,22 @@ const MAX_BOARD_STATE_ELEMENTS = 80;
 
 const BOARD_STATE_CONTEXT = `You modify a collaborative whiteboard. Board state is JSON (id, type, text/title, x, y, width, height, color). Coords in board space; use x,y 100-200, spacing 24-40. Defaults: note 160x120, frame 320x200, shape 120x80.
 
+When the user asks what is on the board (or "what's currently on the board" or "describe the board"): you MUST list every single element in the Board state JSON below. The Board state array has one entry per element—your reply must mention every entry. For each: say the type (sticky-note, shape, text, frame, connector), color/fill if present, and text for notes. Example format: "The board has: (1) a red circle (shape), (2) a blue rectangle (shape), (3) a pink sticky note with text 'X', (4) a yellow sticky note with text 'Y'." Never reply with only one item when the Board state contains multiple elements.
+
 You MUST call a tool to change the board. Do not only describe—invoke the tool so the board updates. Then reply in one sentence.
 
 Command types:
 1) Create: create_sticky_note, create_sticky_notes_grid, create_shape/create_shapes, create_frame/create_frames, create_connector.
-2) Templates—call these when the user asks:
+2) Templates—call only the template tool(s) that match what the user asked for. Do not call create_swot_analysis when the user asked for a flowchart; do not call create_flowchart when the user asked for SWOT; etc. If the user asks for multiple (e.g. "flowchart and SWOT"), then call both.
 - Flowchart: When the user says "flowchart" or "flow chart", call create_flowchart. Pass labels array for custom node names (e.g. ["Start","Consideration","Validation","Decision","Success"]); omit for default (Start, Step 1, Step 2, End).
 - User journey map: When the user says "user journey", "journey map", or "customer journey", call create_user_journey_map. Optionally pass stages and/or lanes arrays; omit for defaults.
 - SWOT: When the user says "SWOT" or "SWOT analysis", call create_swot_analysis. Optionally pass notesPerQuadrant (1-5); omit for 3.
-3) Delete: delete_elements(ids) for specific items; clear_board (no params) for "delete all"/"clear board"/"remove everything".
+3) Delete: delete_elements(ids) for specific items; clear_board (no params) for "delete all"/"clear board"/"remove everything". When the user asks to delete a frame "and its contents" or "and everything inside it", pass the frame's id AND the id of every element whose parentFrameId equals that frame's id (from board state). That removes the frame and only the notes/shapes/text inside it; elements outside the frame (different or no parentFrameId) must not be included.
 4) Move: move_elements(ids, dx, dy).
 5) Update: update_elements(updates).
 6) Arrange: arrange_grid(ids, columns?, spacing?); distribute_elements(ids, direction, spacing?); resize_frame_to_fit(frameId).
 
-Rules: Match "the pink note"/"frame X" to board state; use element id. Frames: content area y >= frame.y+28. Grids: create_sticky_notes_grid with labels in row-major order. Colors: hex or name. For complex requests, call multiple tools in sequence.
+Rules: Match "the pink note"/"frame X" to board state; use element id. Board state includes parentFrameId on notes, shapes, and text—use it to know which elements are inside a frame. When deleting "the frame and its contents", ids must be [frameId, ...all ids with parentFrameId === frameId]; do not include elements outside the frame. Frames: content area y >= frame.y+28. Grids: create_sticky_notes_grid with labels in row-major order. Colors: hex or name. For complex requests, call multiple tools in sequence.
 
 Sticky notes in frames: When creating N sticky notes inside a frame you MUST size the frame so every note is fully inside (with 20px padding). Sticky size 160x120, spacing 24, title bar 28, padding 20. (1) Choose grid: e.g. 5 notes = 2x3, 8 notes = 4x2. (2) Frame dimensions (use these formulas exactly): frame_width = 40 + cols*160 + (cols-1)*24. frame_height = 28 + 40 + rows*120 + (rows-1)*24. (3) First note position: startX = frame.x+20, startY = frame.y+28+20 (content is below the 28px title bar). Step: stepX = 184, stepY = 144. Note at (col,row) = (startX + col*184, startY + row*144). (4) Create the frame with that exact width and height, then create_sticky_note with those positions. Check: rightmost note right edge = startX + (cols-1)*184 + 160 must be <= frame.x+frame_width-20; bottom note bottom = startY + (rows-1)*144 + 120 must be <= frame.y+frame_height-20.
 
@@ -36,9 +39,13 @@ function buildSystemPrompt(boardState: BoardStateSummary[]): string {
       : boardState;
   const stateJson =
     state.length > 0 ? JSON.stringify(state, null, 0) : "[] (empty board)";
+  const countLine =
+    state.length > 0
+      ? `Board state has ${state.length} element(s). When the user asks what is on the board, list all ${state.length} in your reply:\n`
+      : "";
   return `${BOARD_STATE_CONTEXT}
 
-Board state:
+${countLine}Board state:
 ${stateJson}`;
 }
 
@@ -51,14 +58,19 @@ export async function POST(req: Request) {
       boardId?: string;
     };
 
+    if (process.env.NODE_ENV === "development") {
+      const types = Array.isArray(boardState)
+        ? boardState.map((e) => e.type).join(", ")
+        : "not an array";
+      console.log(`[board-agent] boardState length=${Array.isArray(boardState) ? boardState.length : 0} types=[${types}]`);
+    }
+
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(
         JSON.stringify({ error: "messages array required" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-
-    const system = buildSystemPrompt(boardState);
 
     const normalizeContent = (c: string | unknown): string => {
       if (typeof c === "string") return c;
@@ -68,6 +80,37 @@ export async function POST(req: Request) {
       }
       return String(c ?? "");
     };
+
+    const lastMessage = messages[messages.length - 1];
+    const lastUserContent =
+      lastMessage?.role === "user" ? normalizeContent(lastMessage.content) : "";
+    const stateArray = Array.isArray(boardState) ? boardState : [];
+    const forcedWhatOnBoardReply = isAskingWhatIsOnBoard(lastUserContent)
+      ? formatBoardStateList(
+          stateArray.length > MAX_BOARD_STATE_ELEMENTS
+            ? stateArray.slice(-MAX_BOARD_STATE_ELEMENTS)
+            : stateArray
+        )
+      : undefined;
+
+    if (process.env.NODE_ENV === "development") {
+      console.log("[board-agent] lastUserContent:", JSON.stringify(lastUserContent.slice(0, 80)));
+      console.log("[board-agent] isAskingWhatIsOnBoard:", isAskingWhatIsOnBoard(lastUserContent));
+      console.log("[board-agent] stateArray.length:", stateArray.length);
+      console.log("[board-agent] forcedWhatOnBoardReply:", forcedWhatOnBoardReply == null ? "none" : forcedWhatOnBoardReply.slice(0, 120) + "...");
+    }
+
+    // Bypass the model for "what's on the board" so we always return the full list (model often ignored prompt).
+    if (forcedWhatOnBoardReply != null) {
+      return createDataStreamResponse({
+        execute: (dataStream) => {
+          dataStream.write(formatDataStreamPart("text", forcedWhatOnBoardReply));
+          dataStream.write(formatDataStreamPart("finish_message", { finishReason: "stop" }));
+        },
+      });
+    }
+
+    const system = buildSystemPrompt(boardState);
 
     const result = streamText({
       model: openai("gpt-4o-mini"),
@@ -259,7 +302,7 @@ export async function POST(req: Request) {
         }),
         create_flowchart: tool({
           description:
-            "Create a flowchart: one frame titled 'Flowchart', sticky notes in a vertical column with arrows between them. Pass labels: array of node names in order (e.g. ['Start', 'Consideration', 'Validation', 'Decision', 'Success']). Minimum 2 nodes. If the user does not specify node names, omit labels for default: Start, Step 1, Step 2, End. Use the exact names and order the user gives.",
+            "Create a flowchart. Use only when the user asked for a flowchart or flow chart (not when they asked for SWOT, journey map, or something else). One frame titled 'Flowchart', sticky notes in a vertical column with arrows between them. Pass labels: array of node names in order (e.g. ['Start', 'Consideration', 'Validation', 'Decision', 'Success']). Minimum 2 nodes. If the user does not specify node names, omit labels for default: Start, Step 1, Step 2, End.",
           parameters: jsonSchema<{ labels?: string[] }>({
             type: "object",
             properties: {
@@ -274,7 +317,7 @@ export async function POST(req: Request) {
         }),
         create_user_journey_map: tool({
           description:
-            "Create a full user journey map: stage frames in a row, lane rows (Actions, Touchpoints, Thoughts, Pain points, Opportunities) inside each stage, and arrows between stages. Pass stages: array of stage names in order (e.g. ['Awareness', 'Consideration', 'Decision', 'Purchase', 'Loyalty']). Pass lanes: array of row/lane names (e.g. ['Actions', 'Touchpoints', 'Thoughts', 'Pain points', 'Opportunities']). Omit both for the default robust template. Use when the user asks for a user journey map, customer journey, or journey map.",
+            "Create a user journey map. Use only when the user asked for a journey map, user journey, or customer journey (not when they asked for a flowchart, SWOT, or something else). Stage frames in a row with lane rows inside each. Pass stages and/or lanes arrays; omit for defaults.",
           parameters: jsonSchema<{ stages?: string[]; lanes?: string[] }>({
             type: "object",
             properties: {
@@ -294,7 +337,7 @@ export async function POST(req: Request) {
         }),
         create_swot_analysis: tool({
           description:
-            "Create a full SWOT analysis: 4 quadrants in 2x2 layout (Strengths top-left, Weaknesses top-right, Opportunities bottom-left, Threats bottom-right), each with placeholder sticky notes ready to fill. Pass notesPerQuadrant (1–5, default 3) to set how many empty notes per quadrant. Use when the user asks for a SWOT analysis, SWOT, or SWOT template.",
+            "Create a SWOT analysis. Use only when the user asked for SWOT or SWOT analysis (not when they asked for a flowchart, journey map, or something else). 4 quadrants in 2x2 layout (Strengths, Weaknesses, Opportunities, Threats), each with placeholder sticky notes. Pass notesPerQuadrant (1–5, default 3) to set how many empty notes per quadrant.",
           parameters: jsonSchema<{ notesPerQuadrant?: number }>({
             type: "object",
             properties: {
@@ -410,7 +453,7 @@ export async function POST(req: Request) {
         }),
         delete_elements: tool({
           description:
-            "Delete specific elements by ID. Use when the user names which items to remove (e.g. 'delete the pink note'). For 'delete all' or 'clear the board' use clear_board instead.",
+            "Delete specific elements by ID. Use when the user names which items to remove (e.g. 'delete the pink note'). When the user asks to delete a frame and its contents (or 'the frame and everything inside'), pass ids: [frameId, ...every element id where parentFrameId === frameId from board state]. That deletes the frame and only the elements inside it; leave elements outside the frame (parentFrameId different or missing) out of ids. For 'delete all' or 'clear the board' use clear_board instead.",
           parameters: jsonSchema<{ ids: string[] }>({
             type: "object",
             properties: { ids: { type: "array", items: { type: "string" } } },

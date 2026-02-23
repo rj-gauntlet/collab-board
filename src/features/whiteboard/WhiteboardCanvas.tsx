@@ -61,7 +61,7 @@ import {
 } from "@/components/ColorPaletteMenu";
 import { ZoomControls } from "@/components/ZoomControls";
 import { TextFormatBar } from "@/components/TextFormatBar";
-import { ConnectorStyleBar } from "@/components/ConnectorStyleBar";
+import { ConnectorStyleBar, type ConnectorStyleBarHandle } from "@/components/ConnectorStyleBar";
 import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
 import { GridLayer } from "./GridLayer";
 import { exportBoardAsPng } from "./exportBoard";
@@ -149,6 +149,8 @@ export interface WhiteboardCanvasHandle {
   undo: () => void;
   redo: () => void;
   showShortcuts: () => void;
+  /** Pan/zoom to fit all content in view (e.g. after AI creates content). */
+  fitViewToContent: () => void;
 }
 
 const SHAPE_TOOLS = ["rect", "triangle", "circle"] as const;
@@ -168,6 +170,8 @@ interface WhiteboardCanvasProps {
   snapEnabled?: boolean;
   gridVisible?: boolean;
   onSelectionChange?: (selectedCount: number) => void;
+  /** Called whenever board content changes so the parent can keep a fresh snapshot for the AI agent. */
+  onBoardStateSnapshot?: (state: BoardStateSummary[]) => void;
 }
 
 function isClickOnStickyNote(target: Konva.Node | null): boolean {
@@ -240,7 +244,7 @@ export const WhiteboardCanvas = forwardRef<
   WhiteboardCanvasHandle,
   WhiteboardCanvasProps
 >(function WhiteboardCanvas(
-  { boardId, userId, displayName, width, height, pixelRatio = 1, activeTool, snapEnabled = false, gridVisible = false, onSelectionChange },
+  { boardId, userId, displayName, width, height, pixelRatio = 1, activeTool, snapEnabled = false, gridVisible = false, onSelectionChange, onBoardStateSnapshot },
   ref
 ) {
   const stageRef = useRef<Konva.Stage>(null);
@@ -301,13 +305,8 @@ export const WhiteboardCanvas = forwardRef<
     initialTitle: string;
   } | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
-  const [editingConnectorLabel, setEditingConnectorLabel] = useState<{
-    connectorId: string;
-    boardMidX: number;
-    boardMidY: number;
-    label: string;
-  } | null>(null);
   const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
+  const connectorStyleBarRef = useRef<ConnectorStyleBarHandle>(null);
   const [restoredSnapshot, setRestoredSnapshot] = useState<BoardSnapshot | null>(null);
 
   const {
@@ -733,13 +732,21 @@ export const WhiteboardCanvas = forwardRef<
   const createNotesFromAI = useCallback(
     (aiNotes: Array<{ text: string; color?: string; x?: number; y?: number; width?: number; height?: number }>) => {
       const frames = framesRef.current;
-      let offsetY = 0;
+      const clearOrigin = getClearAreaOrigin(
+        notesRef.current,
+        shapesRef.current,
+        textElementsRef.current,
+        framesRef.current
+      );
+      let clearY = clearOrigin.y;
       const newNotes: StickyNoteElement[] = [];
       for (const aiNote of aiNotes) {
-        const x = aiNote.x ?? 100;
-        const y = aiNote.y ?? 100 + offsetY;
+        const useClearArea = aiNote.x == null || aiNote.y == null;
+        const x = useClearArea ? clearOrigin.x : (aiNote.x ?? 100);
+        const y = useClearArea ? clearY : (aiNote.y ?? 100);
         const { x: x2, y: y2 } = clampYBelowFrameTitleBar(x, y, frames);
-        offsetY += (aiNote.height ?? 120) + 20;
+        const noteH = aiNote.height ?? 120;
+        if (useClearArea) clearY = y2 + noteH + 20;
         const note = createDefaultNote(x2, y2, userId);
         const fullNote: StickyNoteElement = {
           ...note,
@@ -768,8 +775,14 @@ export const WhiteboardCanvas = forwardRef<
 
   const createStickyNotesGridFromAI = useCallback(
     (rows: number, columns: number, options?: { labels?: string[]; startX?: number; startY?: number; spacing?: number }) => {
-      const startX = options?.startX ?? 100;
-      const startY = options?.startY ?? 100;
+      const clearOrigin = getClearAreaOrigin(
+        notesRef.current,
+        shapesRef.current,
+        textElementsRef.current,
+        framesRef.current
+      );
+      const startX = options?.startX ?? clearOrigin.x;
+      const startY = options?.startY ?? clearOrigin.y;
       const spacing = options?.spacing ?? DEFAULT_GRID_SPACING;
       const labels = options?.labels;
       const stepX = NOTE_GRID_WIDTH + spacing;
@@ -878,11 +891,22 @@ export const WhiteboardCanvas = forwardRef<
   const createShapesFromAI = useCallback(
     (items: Array<{ shapeType: "rect" | "circle" | "triangle"; fill?: string; x?: number; y?: number; width?: number; height?: number }>) => {
       const frames = framesRef.current;
+      const clearOrigin = getClearAreaOrigin(
+        notesRef.current,
+        shapesRef.current,
+        textElementsRef.current,
+        framesRef.current
+      );
+      let clearY = clearOrigin.y;
       const newShapes: ShapeElement[] = [];
       for (const item of items) {
-        const x = item.x ?? 100;
-        const y = item.y ?? 100;
+        const useClearArea = item.x == null || item.y == null;
+        const defaultW = item.width ?? 120;
+        const defaultH = item.height ?? 80;
+        const x = useClearArea ? clearOrigin.x : (item.x ?? 100);
+        const y = useClearArea ? clearY : (item.y ?? 100);
         const { x: x2, y: y2 } = clampYBelowFrameTitleBar(x, y, frames);
+        if (useClearArea) clearY = y2 + defaultH + 20;
         const kind = item.shapeType === "circle" ? "circle" : item.shapeType === "triangle" ? "triangle" : "rect";
         const shape = createDefaultShape(x2, y2, userId, kind);
         const full: ShapeElement = {
@@ -907,10 +931,20 @@ export const WhiteboardCanvas = forwardRef<
 
   const createFramesFromAI = useCallback(
     (items: Array<{ title: string; x?: number; y?: number; width?: number; height?: number }>) => {
+      const clearOrigin = getClearAreaOrigin(
+        notesRef.current,
+        shapesRef.current,
+        textElementsRef.current,
+        framesRef.current
+      );
+      let clearY = clearOrigin.y;
       const newFrames: FrameElement[] = [];
       for (const item of items) {
-        const x = item.x ?? 100;
-        const y = item.y ?? 100;
+        const useClearArea = item.x == null || item.y == null;
+        const defaultH = item.height ?? 200;
+        const x = useClearArea ? clearOrigin.x : (item.x ?? 100);
+        const y = useClearArea ? clearY : (item.y ?? 100);
+        if (useClearArea) clearY += defaultH + 24;
         const frame = createDefaultFrame(x, y, userId);
         const full: FrameElement = {
           ...frame,
@@ -947,10 +981,14 @@ export const WhiteboardCanvas = forwardRef<
     const FRAME_WIDTH = 320;
     const FRAME_HEIGHT = TITLE_BAR + PAD * 2 + nodeLabels.length * NOTE_H + (nodeLabels.length - 1) * GAP;
 
-    const boardCenterX = (-stageX + width / 2) / scale;
-    const boardCenterY = (-stageY + height / 2) / scale;
-    const frameX = boardCenterX - FRAME_WIDTH / 2;
-    const frameY = boardCenterY - FRAME_HEIGHT / 2;
+    const clearOrigin = getClearAreaOrigin(
+      notesRef.current,
+      shapesRef.current,
+      textElementsRef.current,
+      framesRef.current
+    );
+    const frameX = clearOrigin.x;
+    const frameY = clearOrigin.y;
 
     const frame = createDefaultFrame(frameX, frameY, userId);
     frame.width = FRAME_WIDTH;
@@ -1014,10 +1052,14 @@ export const WhiteboardCanvas = forwardRef<
 
     const frameHeight = TITLE_BAR + PAD * 2 + laneTitles.length * (LANE_H + LANE_GAP) - LANE_GAP;
     const totalWidth = stageTitles.length * FRAME_W + (stageTitles.length - 1) * GAP_FRAMES;
-    const boardCenterX = (-stageX + width / 2) / scale;
-    const boardCenterY = (-stageY + height / 2) / scale;
-    const startX = boardCenterX - totalWidth / 2;
-    const startY = boardCenterY - frameHeight / 2;
+    const clearOrigin = getClearAreaOrigin(
+      notesRef.current,
+      shapesRef.current,
+      textElementsRef.current,
+      framesRef.current
+    );
+    const startX = clearOrigin.x;
+    const startY = clearOrigin.y;
 
     const frameElements: FrameElement[] = [];
     const allNotes: StickyNoteElement[] = [];
@@ -1102,10 +1144,14 @@ export const WhiteboardCanvas = forwardRef<
     const FRAME_H = TITLE_BAR + contentHeight;
     const totalW = FRAME_W * 2 + GAP;
     const totalH = FRAME_H * 2 + GAP;
-    const boardCenterX = (-stageX + width / 2) / scale;
-    const boardCenterY = (-stageY + height / 2) / scale;
-    const startX = boardCenterX - totalW / 2;
-    const startY = boardCenterY - totalH / 2;
+    const clearOrigin = getClearAreaOrigin(
+      notesRef.current,
+      shapesRef.current,
+      textElementsRef.current,
+      framesRef.current
+    );
+    const startX = clearOrigin.x;
+    const startY = clearOrigin.y;
 
     const positions: Array<{ x: number; y: number }> = [
       { x: startX, y: startY },
@@ -1632,6 +1678,10 @@ export const WhiteboardCanvas = forwardRef<
   }, [connectors]);
 
   useEffect(() => {
+    onBoardStateSnapshot?.(getBoardState());
+  }, [notes, shapes, textElements, frames, connectors, getBoardState, onBoardStateSnapshot]);
+
+  useEffect(() => {
     if (!restoredSnapshot) return;
     const noteIds = new Set(persistedNotes.map((n) => n.id));
     const snapshotNoteIds = new Set(restoredSnapshot.notes.map((n) => n.id));
@@ -1880,6 +1930,15 @@ export const WhiteboardCanvas = forwardRef<
       undo: () => undoAction(getCurrentSnapshot),
       redo: redoAction,
       showShortcuts: () => setShowShortcuts(true),
+      fitViewToContent: () => {
+        const bbox = getContentBBox(
+          notesRef.current,
+          shapesRef.current,
+          textElementsRef.current,
+          framesRef.current
+        );
+        if (bbox) fitToContent(bbox);
+      },
     }),
     [
       getBoardState,
@@ -1902,6 +1961,7 @@ export const WhiteboardCanvas = forwardRef<
       undoAction,
       redoAction,
       getCurrentSnapshot,
+      fitToContent,
     ]
   );
 
@@ -2345,10 +2405,10 @@ export const WhiteboardCanvas = forwardRef<
           shapes={shapes}
           connectorFrom={connectorFrom}
           connectorPreviewTo={connectorPreviewTo}
-          onRequestEditLabel={(connectorId, boardMidX, boardMidY, label) =>
-            setEditingConnectorLabel({ connectorId, boardMidX, boardMidY, label })
-          }
-          editingConnectorId={editingConnectorLabel?.connectorId}
+          onRequestEditLabel={(connectorId) => {
+            setSelectedConnectorId(connectorId);
+            setTimeout(() => connectorStyleBarRef.current?.focusLabel(), 0);
+          }}
           selectedConnectorId={selectedConnectorId ?? undefined}
           onSelectConnector={(id) => { setSelectedConnectorId(id); setSelectedIds(new Set()); }}
           x={stageX}
@@ -2473,6 +2533,7 @@ export const WhiteboardCanvas = forwardRef<
             }}
           >
             <ConnectorStyleBar
+              ref={connectorStyleBarRef}
               connector={conn}
               onUpdate={(updates) => {
                 const updated = { ...conn, ...updates, updatedAt: Date.now() };
@@ -2484,24 +2545,6 @@ export const WhiteboardCanvas = forwardRef<
               }}
             />
           </div>
-        );
-      })()}
-      {/* Connector label inline editor — overlaid exactly on the connector midpoint */}
-      {editingConnectorLabel && (() => {
-        const sx = stageX + editingConnectorLabel.boardMidX * scale;
-        const sy = stageY + editingConnectorLabel.boardMidY * scale;
-        return (
-          <ConnectorLabelEditor
-            key={editingConnectorLabel.connectorId}
-            screenX={sx} screenY={sy} scale={scale}
-            initialLabel={editingConnectorLabel.label}
-            onCommit={(label) => {
-              const conn = connectors.find((c) => c.id === editingConnectorLabel.connectorId);
-              if (conn) persistConnector(boardId, { ...conn, label, updatedAt: Date.now() }).catch(console.error);
-              setEditingConnectorLabel(null);
-            }}
-            onCancel={() => setEditingConnectorLabel(null)}
-          />
         );
       })()}
       {contextMenu &&
@@ -2766,77 +2809,6 @@ function EditableTextArea({
   );
 }
 
-// ─── Connector label inline editor ───────────────────────────────────────────
-
-interface ConnectorLabelEditorProps {
-  /** Screen-space X coordinate of the connector midpoint (board-space mid converted via stageX + boardMidX * scale). */
-  screenX: number;
-  /** Screen-space Y coordinate of the connector midpoint. */
-  screenY: number;
-  /** Current zoom scale, used to match the Konva label's pixel dimensions exactly. */
-  scale: number;
-  initialLabel: string;
-  onCommit: (label: string) => void;
-  onCancel: () => void;
-}
-
-function ConnectorLabelEditor({ screenX, screenY, scale, initialLabel, onCommit, onCancel }: ConnectorLabelEditorProps) {
-  const [value, setValue] = useState(initialLabel);
-  const ref = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); onCommit(value); }
-    if (e.key === "Escape") onCancel();
-  };
-
-  // Mirror the Konva label dimensions exactly:
-  //   board-space width  = chars * 8 + 8  (min 80 so empty placeholder is visible)
-  //   board-space height = 20
-  //   board-space font   = 12
-  const boardW = Math.max(value.length * 8 + 8, 80);
-  const boardH = 20;
-  const w = boardW * scale;
-  const h = boardH * scale;
-  const fontSize = 12 * scale;
-
-  return (
-    <input
-      ref={ref}
-      type="text"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={() => onCommit(value)}
-      onKeyDown={handleKeyDown}
-      onMouseDown={(e) => e.stopPropagation()}
-      placeholder="Label…"
-      style={{
-        position: "absolute",
-        left: screenX - w / 2,
-        top: screenY - h / 2,
-        width: w,
-        height: h,
-        fontSize,
-        fontFamily: "sans-serif",
-        color: "#1f2937",
-        padding: `${2 * scale}px ${6 * scale}px`,
-        border: "1.5px solid #000000",
-        borderRadius: 3 * scale,
-        outline: "none",
-        background: "transparent",
-        boxSizing: "border-box",
-        zIndex: 10002,
-        textAlign: "center",
-        pointerEvents: "auto",
-      }}
-    />
-  );
-}
-
 // ─── Content bounding-box helper ─────────────────────────────────────────────
 
 /**
@@ -2865,4 +2837,21 @@ function getContentBBox(
 
   if (!isFinite(minX)) return null;
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+const CLEAR_AREA_PAD = 40;
+
+/**
+ * Returns top-left (x, y) for placing new content in a nearby clear area (to the right of existing content).
+ * Use when creating elements from AI so they don't overlap existing ones.
+ */
+function getClearAreaOrigin(
+  notes: StickyNoteElement[],
+  shapes: ShapeElement[],
+  textElements: TextElement[],
+  frames: FrameElement[]
+): { x: number; y: number } {
+  const bbox = getContentBBox(notes, shapes, textElements, frames);
+  if (!bbox) return { x: 100, y: 100 };
+  return { x: bbox.x + bbox.width + CLEAR_AREA_PAD, y: bbox.y };
 }

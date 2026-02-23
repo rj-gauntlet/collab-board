@@ -14,8 +14,9 @@ import { Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { ConnectorElement, ConnectorDoc, ConnectorStyle } from "./types";
 
-const DEFAULT_STROKE = "#5d4037";
-const DEFAULT_STROKE_WIDTH = 2;
+/** Darker brown for clear contrast against canvas/frame background (hierarchy). */
+const DEFAULT_STROKE = "#4e3528";
+const DEFAULT_STROKE_WIDTH = 2.5;
 
 function parseTimestamp(raw: unknown): number {
   if (raw && typeof raw === "object" && "toMillis" in raw) {

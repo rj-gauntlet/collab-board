@@ -131,13 +131,13 @@
 
 | Priority | Task | Time | Notes |
 |----------|------|------|--------|
-| **P0** | **Auto fit AI output** — expose `fitViewToContent`, call after tool run | 30–45 min | High impact; users stop hunting for new content. |
-| **P0** | **CollabBot suggested prompts** — Brainstorm / Plan / Analyze groups when empty | 30–40 min | Makes the panel feel guided, not like a console. |
-| **P1** | **CollabBot “Thinking…”** — make streaming state more visible (spinner/pulse) | 10–15 min | Quick win. |
-| **P1** | **CollabBot message spacing** — increase `space-y-*`, padding per message | 5–10 min | Quick. |
-| **P1** | **Canvas hierarchy** — frame shadow/stroke, background tint | 30–40 min | Addresses “visually flat” and “sections intentional.” |
-| **P2** | **Presentation script** — rewrite intro to who/problem first | 15 min | Narrative lead for the demo. |
-| **P2** | **CollabBot copy** — short “plain English” subheading | 5 min | Optional if time. |
+| **P0** | ☑ **Auto fit AI output** — expose `fitViewToContent`, call after tool run | 30–45 min | High impact; users stop hunting for new content. |
+| **P0** | ☑ **CollabBot suggested prompts** — Brainstorm / Plan / Analyze groups when empty | 30–40 min | Makes the panel feel guided, not like a console. |
+| **P1** | ☑ **CollabBot “Thinking…”** — make streaming state more visible (spinner/pulse) | 10–15 min | Quick win. |
+| **P1** | ☑ **CollabBot message spacing** — increase `space-y-*`, padding per message | 5–10 min | Quick. |
+| **P1** | ☑ **Canvas hierarchy** — frame shadow/stroke, background tint | 30–40 min | Addresses “visually flat” and “sections intentional.” |
+| **P2** | ☑ **Presentation script** — rewrite intro to who/problem first | 15 min | Narrative lead for the demo. |
+| **P2** | ☑ **CollabBot copy** — short "plain English" subheading | 5 min | Optional if time. |
 
 **Suggested order for tomorrow:**
 

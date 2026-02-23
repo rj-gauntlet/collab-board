@@ -138,10 +138,8 @@ interface ConnectorsLayerProps {
   connectorFrom?: { id: string; type: ConnectorElement["fromType"] } | null;
   /** Board-space cursor position while drawing a connector (other end of preview). */
   connectorPreviewTo?: { x: number; y: number } | null;
-  /** Called with board-space midpoint coordinates of the connector. */
-  onRequestEditLabel?: (connectorId: string, boardMidX: number, boardMidY: number, label: string) => void;
-  /** ID of the connector whose label is currently being edited. */
-  editingConnectorId?: string;
+  /** Called when user requests to edit the connector label (e.g. double-click); editing happens in the style bar. */
+  onRequestEditLabel?: (connectorId: string) => void;
   /** ID of the selected connector (shows highlight ring). */
   selectedConnectorId?: string;
   /** Called when user clicks a connector line. */
@@ -159,7 +157,6 @@ export function ConnectorsLayer({
   connectorFrom,
   connectorPreviewTo,
   onRequestEditLabel,
-  editingConnectorId,
   selectedConnectorId,
   onSelectConnector,
   x = 0,
@@ -198,8 +195,8 @@ export function ConnectorsLayer({
     if (!fromAnchors || !fromAnchors.length) return null;
     const from = closestAnchorToPoint(fromAnchors, connectorPreviewTo);
     const to = connectorPreviewTo;
-    const stroke = "#5d4037";
-    const strokeWidth = 2;
+    const stroke = "#4e3528";
+    const strokeWidth = 2.5;
     return (
       <Arrow
         key="connector-preview"
@@ -226,8 +223,8 @@ export function ConnectorsLayer({
         if (!fromAnchors || !toAnchors) return null;
         const [from, to] = closestAnchorPair(fromAnchors, toAnchors);
 
-        const stroke = conn.stroke ?? "#5d4037";
-        const strokeWidth = conn.strokeWidth ?? 2;
+        const stroke = conn.stroke ?? "#4e3528";
+        const strokeWidth = conn.strokeWidth ?? 2.5;
         const isArrow = conn.style === "arrow";
         const isDashed = conn.dashed ?? false;
         const isCurved = conn.curved ?? false;
@@ -303,7 +300,7 @@ export function ConnectorsLayer({
               listening={hasHandler}
               onDblClick={(e) => {
                 e.cancelBubble = true;
-                onRequestEditLabel?.(conn.id, midX, midY, label);
+                onRequestEditLabel?.(conn.id);
               }}
               onTap={(e) => {
                 e.cancelBubble = true;
@@ -312,7 +309,7 @@ export function ConnectorsLayer({
             />
 
             {/* Label badge */}
-            {label && conn.id !== editingConnectorId ? (
+            {label ? (
               <Group x={midX} y={midY}>
                 <Rect
                   x={-label.length * 4 - 4}
@@ -326,7 +323,7 @@ export function ConnectorsLayer({
                   listening={hasHandler}
                   onDblClick={(e) => {
                     e.cancelBubble = true;
-                    onRequestEditLabel?.(conn.id, midX, midY, label);
+                    onRequestEditLabel?.(conn.id);
                   }}
                 />
                 <Text

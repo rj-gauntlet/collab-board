@@ -79,6 +79,23 @@ export function BoardAgentChat({
 
   const onFinish = useCallback(() => {}, []);
 
+  const chatFetch = useCallback<typeof fetch>(
+    (input, init) => {
+      if (typeof input !== "string" || init?.method !== "POST" || typeof init?.body !== "string") {
+        return fetch(input, init);
+      }
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>;
+        body.boardId = boardId;
+        body.boardState = getBoardState();
+        return fetch(input, { ...init, body: JSON.stringify(body) });
+      } catch {
+        return fetch(input, init);
+      }
+    },
+    [boardId, getBoardState]
+  );
+
   const {
     messages,
     input,
@@ -89,6 +106,7 @@ export function BoardAgentChat({
   } = useChat({
     api: "/api/ai/board-agent",
     body: { boardId },
+    fetch: chatFetch,
     onFinish,
     initialMessages: initialMessages as Message[],
   });
@@ -119,6 +137,11 @@ export function BoardAgentChat({
     if (toolCalls.length > 0) {
       executedMessageIdsRef.current.add(last.id);
       executeBoardAgentTools(canvasRef.current, toolCalls);
+      // Auto-fit view so new content is visible (delay for state/Firestore to update)
+      const timeoutId = setTimeout(() => {
+        canvasRef.current?.fitViewToContent?.();
+      }, 400);
+      return () => clearTimeout(timeoutId);
     }
   }, [messages, status, canvasRef]);
 
@@ -213,6 +236,7 @@ export function BoardAgentChat({
           ref={chatScrollRef}
           onScroll={handleChatScroll}
           className="flex-1 overflow-y-auto min-h-[200px] max-h-[320px] p-3 space-y-2"
+          data-testid="board-agent-messages"
         >
         {messages.length === 0 && status !== "streaming" && (
           <p className="text-xs text-[#5d4037]/70 italic">
@@ -231,6 +255,7 @@ export function BoardAgentChat({
             <div
               key={m.id}
               className={`flex py-1 ${isUser ? "justify-end" : "justify-start"}`}
+              data-testid={isUser ? "board-agent-message-user" : "board-agent-message-assistant"}
             >
               <div
                 className={`text-sm max-w-[85%] rounded-2xl px-3 py-2 ${
@@ -247,7 +272,7 @@ export function BoardAgentChat({
                     {timeLabel}
                   </span>
                 </div>
-                <div className="mt-1.5">
+                <div className="mt-1.5" data-testid={isUser ? undefined : "board-agent-message-assistant-text"}>
                   {isUser ? (
                     <span>{(m.parts?.find((p) => p.type === "text" && "text" in p) as { text: string } | undefined)?.text ?? m.content ?? ""}</span>
                   ) : (
@@ -272,7 +297,7 @@ export function BoardAgentChat({
           );
         })}
         {status === "streaming" && (
-          <div className="flex items-center gap-2 py-2 text-sm text-[#5d4037]">
+          <div className="flex items-center gap-2 py-2 text-sm text-[#5d4037]" data-testid="board-agent-streaming">
             <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[#ff8f00] border-t-transparent" aria-hidden />
             <span>CollabBot is thinking…</span>
           </div>

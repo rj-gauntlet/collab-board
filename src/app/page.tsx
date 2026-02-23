@@ -39,7 +39,7 @@ export default function Home() {
   if (!user) {
     const testUsers = ["Alex", "Jordan", "Sam", "Casey", "Riley"];
     return (
-      <main className="font-sans flex h-screen flex-col items-center justify-center gap-6 bg-[#fffbf0] px-4">
+      <main className="font-sans flex min-h-screen flex-col items-center justify-center gap-6 overflow-y-auto bg-[#fffbf0] px-4 py-8">
         <h1 className="font-sans text-2xl font-extrabold tracking-tight text-[#3e2723]">
           CollabBoard
         </h1>
@@ -71,8 +71,10 @@ export default function Home() {
           </svg>
           Sign in with Google
         </button>
-        <div className="font-sans mt-4 flex flex-col items-center gap-2">
-          <p className="text-xs text-[#5d4037]/80">Or sign in as a test user (for multiplayer evaluation):</p>
+        <section className="font-sans mt-2 flex flex-col items-center gap-2" aria-label="Test users for multiplayer">
+          <p className="text-xs font-medium text-[#5d4037]">
+            Or sign in as a test user (for multiplayer evaluation):
+          </p>
           <div className="flex flex-wrap justify-center gap-2">
             {testUsers.map((name) => (
               <button
@@ -85,7 +87,7 @@ export default function Home() {
               </button>
             ))}
           </div>
-        </div>
+        </section>
       </main>
     );
   }

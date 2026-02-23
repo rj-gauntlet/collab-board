@@ -1,13 +1,17 @@
 "use client";
 
-import React from "react";
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useCallback, useState } from "react";
 import type { ConnectorElement } from "@/features/connectors/types";
 
-const STROKE_WIDTHS = [1, 2, 3, 5];
+const STROKE_WIDTHS = [1, 2, 2.5, 3, 5];
 const STROKE_COLORS = [
-  "#5d4037", "#1f2937", "#ef4444", "#f97316",
+  "#4e3528", "#5d4037", "#1f2937", "#ef4444", "#f97316",
   "#eab308", "#22c55e", "#3b82f6", "#8b5cf6",
 ];
+
+export interface ConnectorStyleBarHandle {
+  focusLabel: () => void;
+}
 
 interface ConnectorStyleBarProps {
   connector: ConnectorElement;
@@ -15,7 +19,29 @@ interface ConnectorStyleBarProps {
   onDelete: () => void;
 }
 
-export function ConnectorStyleBar({ connector, onUpdate, onDelete }: ConnectorStyleBarProps) {
+export const ConnectorStyleBar = forwardRef<ConnectorStyleBarHandle, ConnectorStyleBarProps>(
+  function ConnectorStyleBar({ connector, onUpdate, onDelete }, ref) {
+  const labelInputRef = useRef<HTMLInputElement>(null);
+  const [labelValue, setLabelValue] = useState(connector.label ?? "");
+
+  useImperativeHandle(ref, () => ({
+    focusLabel: () => {
+      labelInputRef.current?.focus();
+      labelInputRef.current?.select();
+    },
+  }), []);
+
+  useEffect(() => {
+    setLabelValue(connector.label ?? "");
+  }, [connector.id, connector.label]);
+
+  const commitLabel = useCallback(() => {
+    const trimmed = labelValue.trim();
+    if ((connector.label ?? "") !== trimmed) {
+      onUpdate({ label: trimmed });
+    }
+  }, [labelValue, connector.label, onUpdate]);
+
   const isArrow = connector.style === "arrow";
   const isDashed = connector.dashed ?? false;
   const isCurved = connector.curved ?? false;
@@ -116,6 +142,30 @@ export function ConnectorStyleBar({ connector, onUpdate, onDelete }: ConnectorSt
 
       <div className="w-px h-4 bg-[#ffe0b2] mx-0.5" />
 
+      {/* Label — edit in bar to disambiguate from line click */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-[#5d4037] whitespace-nowrap">Label</span>
+        <input
+          ref={labelInputRef}
+          type="text"
+          value={labelValue}
+          onChange={(e) => setLabelValue(e.target.value)}
+          onBlur={commitLabel}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitLabel();
+              labelInputRef.current?.blur();
+            }
+          }}
+          placeholder="Add label…"
+          className="w-24 rounded border border-[#ffe0b2] px-2 py-1 text-xs text-[#5d4037] placeholder-[#9ca3af] focus:border-[#ff8f00] focus:outline-none focus:ring-1 focus:ring-[#ff8f00]"
+          title="Connector label"
+        />
+      </div>
+
+      <div className="w-px h-4 bg-[#ffe0b2] mx-0.5" />
+
       {/* Delete */}
       <button
         onClick={onDelete}
@@ -126,4 +176,4 @@ export function ConnectorStyleBar({ connector, onUpdate, onDelete }: ConnectorSt
       </button>
     </div>
   );
-}
+});

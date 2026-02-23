@@ -140,24 +140,24 @@ export function FrameNode({
           shadowOffsetX={0}
           shadowOffsetY={isSelected ? 5 : isHovered ? 4 : 3}
         />
-        {/* Title bar background */}
+        {/* Title bar background — stronger so header reads distinct from body */}
         <Rect
           x={0}
           y={0}
           width={frame.width}
           height={FRAME_TITLE_BAR_HEIGHT}
-          fill="rgba(93, 64, 55, 0.07)"
+          fill="rgba(93, 64, 55, 0.18)"
           cornerRadius={[8, 8, 0, 0]}
           listening={false}
         />
-        {/* Title / body separator */}
+        {/* Title / body separator — strong boundary */}
         <Line
           points={[0, FRAME_TITLE_BAR_HEIGHT, frame.width, FRAME_TITLE_BAR_HEIGHT]}
-          stroke={isSelected ? "#ff8f00" : "#d4b896"}
-          strokeWidth={1}
+          stroke={isSelected ? "#ff8f00" : "rgba(93, 64, 55, 0.45)"}
+          strokeWidth={2}
           listening={false}
         />
-        {/* Title text group — double-click to edit */}
+        {/* Title text group — double-click to edit; strong typography for hierarchy */}
         <Group
           x={PADDING}
           y={PADDING / 2}
@@ -181,7 +181,7 @@ export function FrameNode({
             fontSize={14}
             fontStyle="600"
             fontFamily="sans-serif"
-            fill={frame.title ? "#5d4037" : "#9ca3af"}
+            fill={frame.title ? "#3e2723" : "#9ca3af"}
             wrap="none"
             ellipsis={true}
             verticalAlign="middle"
