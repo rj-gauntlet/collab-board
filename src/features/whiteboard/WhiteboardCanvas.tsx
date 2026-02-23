@@ -158,6 +158,8 @@ export interface WhiteboardCanvasHandle {
   showShortcuts: () => void;
   /** Pan/zoom to fit all content in view (e.g. after AI creates content). */
   fitViewToContent: () => void;
+  /** One-shot: pan/zoom to same board center + scale as another user ("Go to user's view"). */
+  goToViewportByCenter: (centerBoardX: number, centerBoardY: number, scale: number) => void;
 }
 
 const SHAPE_TOOLS = ["rect", "triangle", "circle"] as const;
@@ -363,13 +365,14 @@ export const WhiteboardCanvas = forwardRef<
     handlePanEnd,
     resetView,
     fitToContent,
+    goToViewportByCenter,
     zoomIn,
     zoomOut,
     handlePinch,
     handlePinchEnd,
   } = usePanZoom(width, height);
 
-  const { syncCursor } = useSyncCursor(boardId, userId, displayName);
+  const { syncCursor, syncCursorOutOfViewport } = useSyncCursor(boardId, userId, displayName);
   useSyncSelection(boardId, userId, selectedIds);
   const remoteSelections = useRemoteSelections(boardId, userId);
   const remoteDragging = useRemoteDragging(boardId, userId);
@@ -1987,7 +1990,8 @@ export const WhiteboardCanvas = forwardRef<
         );
         if (bbox) fitToContent(bbox);
       },
-    }),
+    goToViewportByCenter,
+  }),
     [
       getBoardState,
       createNotesFromAI,
@@ -2010,6 +2014,7 @@ export const WhiteboardCanvas = forwardRef<
       redoAction,
       getCurrentSnapshot,
       fitToContent,
+      goToViewportByCenter,
     ]
   );
 
@@ -2141,9 +2146,13 @@ export const WhiteboardCanvas = forwardRef<
     (evt: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = evt.target.getStage();
       const pos = stage?.getPointerPosition();
-      if (pos) {
+        if (pos) {
         const { x, y } = screenToBoard(pos.x, pos.y);
-        syncCursor(x, y);
+        syncCursor(x, y, {
+          scale,
+          centerBoardX: (width / 2 - stageX) / scale,
+          centerBoardY: (height / 2 - stageY) / scale,
+        });
         if (activeTool === "connector" && connectorFrom) {
           setConnectorPreviewTo({ x, y });
         }
@@ -2158,24 +2167,43 @@ export const WhiteboardCanvas = forwardRef<
         handlePanMove(evt);
       }
     },
-    [activeTool, connectorFrom, syncCursor, handlePanMove, screenToBoard, selectionBox]
+    [activeTool, connectorFrom, syncCursor, handlePanMove, screenToBoard, selectionBox, stageX, stageY, scale, width, height]
   );
 
   // Sync cursor on window mousemove so it keeps updating during drag (Stage may not get move events then).
+  // When pointer leaves the canvas, broadcast "cursor out of viewport" so others stop seeing our cursor.
+  const cursorInViewportRef = useRef(true);
   useEffect(() => {
     const onWindowMouseMove = (evt: MouseEvent) => {
       const stage = stageRef.current;
       if (!stage?.container) return;
       const rect = stage.container().getBoundingClientRect();
-      const stageX = evt.clientX - rect.left;
-      const stageY = evt.clientY - rect.top;
-      if (stageX < 0 || stageY < 0 || stageX > rect.width || stageY > rect.height) return;
-      const { x, y } = screenToBoard(stageX, stageY);
-      syncCursor(x, y);
+      const pointerX = evt.clientX - rect.left;
+      const pointerY = evt.clientY - rect.top;
+      const inViewport =
+        pointerX >= 0 && pointerY >= 0 && pointerX <= rect.width && pointerY <= rect.height;
+      if (!inViewport) {
+        if (cursorInViewportRef.current) {
+          cursorInViewportRef.current = false;
+          syncCursorOutOfViewport({
+            scale,
+            centerBoardX: (width / 2 - stageX) / scale,
+            centerBoardY: (height / 2 - stageY) / scale,
+          });
+        }
+        return;
+      }
+      cursorInViewportRef.current = true;
+      const { x, y } = screenToBoard(pointerX, pointerY);
+      syncCursor(x, y, {
+        scale,
+        centerBoardX: (width / 2 - stageX) / scale,
+        centerBoardY: (height / 2 - stageY) / scale,
+      });
     };
     window.addEventListener("mousemove", onWindowMouseMove, { passive: true });
     return () => window.removeEventListener("mousemove", onWindowMouseMove);
-  }, [syncCursor, screenToBoard]);
+  }, [syncCursor, syncCursorOutOfViewport, screenToBoard, stageX, stageY, scale, width, height]);
 
   const handleStageMouseUp = useCallback(() => {
     if (selectionBox) {

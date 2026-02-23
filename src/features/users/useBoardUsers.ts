@@ -14,6 +14,8 @@ export interface BoardUser {
   displayName: string;
   email?: string | null;
   online: boolean;
+  /** Last activity timestamp (ms) from presence; use for "Last seen" display. */
+  lastSeenAt: number;
 }
 
 export function useBoardUsers(boardId: string): BoardUser[] {
@@ -91,6 +93,7 @@ export function useBoardUsers(boardId: string): BoardUser[] {
         displayName: meta.displayName,
         email: meta.email,
         online,
+        lastSeenAt: updatedAt,
       });
     }
 

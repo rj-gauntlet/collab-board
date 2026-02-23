@@ -18,14 +18,27 @@ export function useSyncCursor(
   const rafRef = useRef<number | null>(null);
 
   const flushPosition = useCallback(
-    (position: CursorPosition) => {
+    (
+      position: Partial<CursorPosition> & {
+        updatedAt: number;
+        scale?: number;
+        centerBoardX?: number;
+        centerBoardY?: number;
+      }
+    ) => {
       const db = getFirebaseDatabase();
       const presenceRef = ref(db, `presence/${boardId}/${userId}`);
-      set(presenceRef, {
+      const payload: Record<string, unknown> = {
         ...position,
-        updatedAt: Date.now(),
+        updatedAt: position.updatedAt,
         displayName: displayName ?? position.displayName ?? null,
-      });
+      };
+      if (position.scale !== undefined) payload.scale = position.scale;
+      if (position.centerBoardX !== undefined) payload.centerBoardX = position.centerBoardX;
+      if (position.centerBoardY !== undefined) payload.centerBoardY = position.centerBoardY;
+      if (position.x !== undefined) payload.x = position.x;
+      if (position.y !== undefined) payload.y = position.y;
+      set(presenceRef, payload);
     },
     [boardId, userId, displayName]
   );
@@ -43,13 +56,26 @@ export function useSyncCursor(
   }, [flushPosition]);
 
   const syncCursor = useCallback(
-    (x: number, y: number) => {
+    (
+      x: number,
+      y: number,
+      viewport?: { scale: number; centerBoardX: number; centerBoardY: number }
+    ) => {
       const now = Date.now();
       const throttle =
         typeof document !== "undefined" && document.hidden
           ? THROTTLE_MS_HIDDEN
           : THROTTLE_MS;
-      const position: CursorPosition = { x, y, updatedAt: now };
+      const position: CursorPosition & {
+        scale?: number;
+        centerBoardX?: number;
+        centerBoardY?: number;
+      } = { x, y, updatedAt: now };
+      if (viewport) {
+        position.scale = viewport.scale;
+        position.centerBoardX = viewport.centerBoardX;
+        position.centerBoardY = viewport.centerBoardY;
+      }
 
       if (now - lastUpdateRef.current >= throttle) {
         lastUpdateRef.current = now;
@@ -60,6 +86,26 @@ export function useSyncCursor(
       }
     },
     [flushPosition, scheduleFlush]
+  );
+
+  /** Call when pointer leaves the canvas so others stop seeing your cursor. Keeps viewport for "Go to view". */
+  const syncCursorOutOfViewport = useCallback(
+    (viewport?: { scale: number; centerBoardX: number; centerBoardY: number }) => {
+      const now = Date.now();
+      const payload: Record<string, unknown> = {
+        updatedAt: now,
+        displayName: displayName ?? null,
+      };
+      if (viewport) {
+        payload.scale = viewport.scale;
+        payload.centerBoardX = viewport.centerBoardX;
+        payload.centerBoardY = viewport.centerBoardY;
+      }
+      const db = getFirebaseDatabase();
+      const presenceRef = ref(db, `presence/${boardId}/${userId}`);
+      set(presenceRef, payload);
+    },
+    [boardId, userId, displayName]
   );
 
   useEffect(() => {
@@ -75,5 +121,5 @@ export function useSyncCursor(
     };
   }, [boardId, userId]);
 
-  return { syncCursor };
+  return { syncCursor, syncCursorOutOfViewport };
 }

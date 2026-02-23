@@ -12,7 +12,9 @@ import type { Tool } from "@/features/toolbar";
 import { PerformanceMonitor } from "@/components/PerformanceMonitor";
 import { useAuth } from "@/features/auth";
 import { UsersList } from "@/components/UsersList";
+import { ShareModal } from "@/components/ShareModal";
 import { PresenceJoinToast } from "@/components/PresenceJoinToast";
+import { useRemoteCursors } from "@/features/cursors/useRemoteCursors";
 import { generateBoardId } from "@/lib/utils";
 import { addUserBoard } from "@/features/boards/userBoardActions";
 import { useBoardName } from "@/features/boards/useBoardName";
@@ -35,9 +37,27 @@ export default function BoardPage() {
   const [nameEditing, setNameEditing] = useState(false);
   const [nameEditValue, setNameEditValue] = useState("");
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
-  const [copyLinkFeedback, setCopyLinkFeedback] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
   const canvasRef = useRef<WhiteboardCanvasHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const remoteCursors = useRemoteCursors(boardId ?? "", user?.uid);
+  const handleGoToUserView = useCallback(
+    (userId: string) => {
+      const cursor = remoteCursors.find((c) => c.userId === userId);
+      if (
+        cursor?.scale != null &&
+        cursor?.centerBoardX != null &&
+        cursor?.centerBoardY != null
+      ) {
+        canvasRef.current?.goToViewportByCenter(
+          cursor.centerBoardX,
+          cursor.centerBoardY,
+          cursor.scale
+        );
+      }
+    },
+    [remoteCursors]
+  );
   const boardStateSnapshotRef = useRef<BoardStateSummary[]>([]);
   const onBoardStateSnapshot = useCallback((state: BoardStateSummary[]) => {
     boardStateSnapshotRef.current = state;
@@ -153,17 +173,8 @@ export default function BoardPage() {
     await setBoardName(boardId, nameEditValue, user?.uid);
   };
 
-  const handleCopyBoardLink = useCallback(() => {
-    if (!boardId || typeof window === "undefined") return;
-    const url = `${window.location.origin}/${boardId}`;
-    navigator.clipboard.writeText(url).then(
-      () => {
-        setCopyLinkFeedback(true);
-        setTimeout(() => setCopyLinkFeedback(false), 2000);
-      },
-      () => {}
-    );
-  }, [boardId]);
+  const boardLink =
+    typeof window !== "undefined" && boardId ? `${window.location.origin}/${boardId}` : "";
 
   if (loading) {
     return (
@@ -407,9 +418,9 @@ export default function BoardPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={handleCopyBoardLink}
+              onClick={() => setShareModalOpen(true)}
               className="font-sans flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-white/90 transition hover:bg-white/20 hover:text-white"
-              title="Copy board link to share"
+              title="Share board"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -423,16 +434,19 @@ export default function BoardPage() {
                 strokeLinejoin="round"
                 aria-hidden
               >
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" x2="12" y1="2" y2="15" />
               </svg>
-              {copyLinkFeedback ? "Copied!" : "Copy link"}
+              Share
             </button>
             <UsersList
               boardId={boardId}
               currentUserId={user.uid}
               currentDisplayName={resolvedDisplayName}
               currentEmail={user.email ?? null}
+              remoteCursors={remoteCursors}
+              onGoToUserView={handleGoToUserView}
             />
             <span className="font-sans text-sm text-white/90">
               {resolvedDisplayName}
@@ -447,6 +461,13 @@ export default function BoardPage() {
           </div>
         </div>
       </header>
+
+      {shareModalOpen && boardId && (
+        <ShareModal
+          boardLink={boardLink}
+          onClose={() => setShareModalOpen(false)}
+        />
+      )}
 
       <PresenceJoinToast boardId={boardId} currentUserId={user.uid} />
 
