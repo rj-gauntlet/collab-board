@@ -88,6 +88,17 @@ export function usePanZoom(viewportWidth: number, viewportHeight: number) {
     setStageY(0);
   }, []);
 
+  /** One-shot: set pan and zoom so the same board center and scale are visible (works across different window sizes). */
+  const goToViewportByCenter = useCallback(
+    (centerBoardX: number, centerBoardY: number, newScale: number) => {
+      const clampedScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
+      setScale(clampedScale);
+      setStageX(viewportWidth / 2 - centerBoardX * clampedScale);
+      setStageY(viewportHeight / 2 - centerBoardY * clampedScale);
+    },
+    [viewportWidth, viewportHeight]
+  );
+
   /**
    * Zoom and pan so that the given bounding box (in board space) is fully
    * visible and centered in the viewport with a comfortable margin.
@@ -168,6 +179,7 @@ export function usePanZoom(viewportWidth: number, viewportHeight: number) {
     handlePanEnd,
     resetView,
     fitToContent,
+    goToViewportByCenter,
     zoomIn,
     zoomOut,
     zoomTo,
